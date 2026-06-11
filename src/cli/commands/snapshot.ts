@@ -302,7 +302,6 @@ export const snapshotCommand = new Command('snapshot')
       console.log(chalk.green('\n✅ Snapshot completed!'));
       console.log(chalk.yellow('💡 Commands:'));
       console.log(`  • ${chalk.cyan('hayai snapshot list')} - View all snapshots`);
-      console.log(`  • ${chalk.cyan('hayai snapshot restore')} - Restore from snapshot`);
 
     } catch (error) {
       console.error(chalk.red('❌ Snapshot failed:'), error instanceof Error ? error.message : error);
@@ -378,7 +377,7 @@ snapshotCommand
 
       console.log(chalk.yellow('💡 Commands:'));
       console.log(`  • ${chalk.cyan('hayai snapshot <name>')} - Create new snapshot`);
-      console.log(`  • ${chalk.cyan('hayai snapshot restore <file>')} - Restore from snapshot`);
+      console.log(`  • ${chalk.cyan('hayai snapshot clean')} - Remove old snapshots`);
 
     } catch (error) {
       console.error(chalk.red('❌ Failed to list snapshots:'), error instanceof Error ? error.message : error);
