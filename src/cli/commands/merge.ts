@@ -294,18 +294,16 @@ async function handleMerge(options: MergeOptions): Promise<void> {
     process.exit(1);
   }
   
-  // Preview mode
-  if (options.preview || (!options.execute && !options.force)) {
+  // Preview mode: explicit --preview, or any invocation without --execute.
+  // --force never substitutes for --execute; it only skips the confirmation.
+  if (options.preview || !options.execute) {
     await previewMerge(sourceInstance, targetInstance);
-
-    if (!options.execute) {
-      console.log(chalk.cyan('\n💡 Use --execute to perform the merge operation'));
-      return;
-    }
+    console.log(chalk.cyan('\n💡 Use --execute to perform the merge operation'));
+    return;
   }
 
   // Final confirmation for destructive operation
-  if (!options.force && options.execute) {
+  if (!options.force) {
     const { proceed } = await inquirer.prompt([
       {
         type: 'confirm',
