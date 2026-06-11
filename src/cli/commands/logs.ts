@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { spawn } from 'child_process';
 import { getDockerManager } from '../../core/docker.js';
+import { getComposeFilePath } from '../../core/config.js';
 import { LogOptions } from '../../core/types.js';
 
 export const logsCommand = new Command('logs')
@@ -17,41 +19,42 @@ export const logsCommand = new Command('logs')
       const instance = dockerManager.getInstance(name);
       if (!instance) {
         console.error(chalk.red(`❌ Database instance '${name}' not found`));
+        console.log(chalk.yellow('💡 Run `hayai list` to see available databases'));
         process.exit(1);
       }
 
-      console.log(chalk.cyan(`📋 Logs for '${name}':`));
-      console.log(chalk.gray('─'.repeat(50)));
+      const composeFilePath = await getComposeFilePath();
+      const args = ['compose', '-f', composeFilePath, 'logs'];
 
-      // NOTE: Docker logs integration implementation pending
-      // Will use dockerode to stream real-time container logs
-      console.log(chalk.yellow('🚧 Docker logs integration coming soon!'));
-      console.log(chalk.gray('This will show real-time logs from the database container.'));
-      
+      if (options.follow) {
+        args.push('--follow');
+      }
+      if (options.tail !== undefined) {
+        args.push('--tail', String(options.tail));
+      }
+      if (options.since) {
+        args.push('--since', options.since);
+      }
+      args.push(`${name}-db`);
+
+      console.log(chalk.cyan(`📋 Logs for '${name}':`));
       if (options.follow) {
         console.log(chalk.gray('Following logs... (Press Ctrl+C to stop)'));
-        
-        // Simulate log following
-        const logEntries = [
-          '2024-01-07 12:00:00 [INFO] Database server starting...',
-          '2024-01-07 12:00:01 [INFO] Listening on port 5432',
-          '2024-01-07 12:00:02 [INFO] Database ready to accept connections',
-          '2024-01-07 12:00:03 [INFO] Connection established from 127.0.0.1',
-        ];
-
-        for (const entry of logEntries) {
-          console.log(chalk.gray(entry));
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
       }
+      console.log(chalk.gray('─'.repeat(50)));
 
-      console.log(chalk.yellow('\n💡 Commands:'));
-      console.log('  • hayai logs <name> -f     - Follow logs in real-time');
-      console.log('  • hayai logs <name> -t 50  - Show last 50 lines');
-      console.log('  • hayai stop <name>        - Stop the database');
+      const child = spawn('docker', args, { stdio: 'inherit' });
 
+      child.on('error', (error) => {
+        console.error(chalk.red('\n❌ Failed to show logs:'), error.message);
+        process.exit(1);
+      });
+
+      child.on('close', (code) => {
+        process.exit(code ?? 0);
+      });
     } catch (error) {
       console.error(chalk.red('\n❌ Failed to show logs:'), error instanceof Error ? error.message : error);
       process.exit(1);
     }
-  }); 
+  });
