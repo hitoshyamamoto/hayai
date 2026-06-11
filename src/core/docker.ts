@@ -276,7 +276,7 @@ export class DockerManager {
     return instance;
   }
 
-  public async removeDatabase(name: string): Promise<void> {
+  public async removeDatabase(name: string, options: { keepData?: boolean } = {}): Promise<void> {
     const instance = this.instances.get(name);
     if (!instance) {
       throw new Error(`Database instance '${name}' not found`);
@@ -300,8 +300,8 @@ export class DockerManager {
     // Remove from instances
     this.instances.delete(name);
 
-    // Clean up data directory
-    if (await this.pathExists(instance.volume)) {
+    // Clean up data directory unless the caller asked to keep it
+    if (!options.keepData && await this.pathExists(instance.volume)) {
       await rm(instance.volume, { recursive: true });
     }
 
@@ -880,10 +880,13 @@ export const createDatabase = async (
   return await manager.createDatabase(name, template, options);
 };
 
-export const removeDatabase = async (name: string): Promise<void> => {
+export const removeDatabase = async (
+  name: string,
+  options: { keepData?: boolean } = {}
+): Promise<void> => {
   const manager = DockerManager.getInstance();
   await manager.initialize();
-  await manager.removeDatabase(name);
+  await manager.removeDatabase(name, options);
 };
 
 export const startDatabase = async (name: string): Promise<void> => {

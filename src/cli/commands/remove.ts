@@ -46,11 +46,14 @@ export const removeCommand = new Command('remove')
       }
 
       // Remove the database
-      await dockerManager.removeDatabase(name);
+      await dockerManager.removeDatabase(name, { keepData: options.keepData });
 
       spinner.succeed(`Database '${name}' removed successfully`);
 
       console.log(chalk.green('\n✅ Database removed!'));
+      if (options.keepData) {
+        console.log(chalk.yellow(`💡 Data volume kept at: ${instance.volume}`));
+      }
       console.log(chalk.yellow('💡 Run `hayai list` to see remaining databases'));
 
     } catch (error) {
