@@ -7,6 +7,7 @@ import { getTemplate } from '../../core/templates.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
+import { cp } from 'fs/promises';
 
 interface CloneOptions extends CLIOptions {
   from: string;
@@ -17,14 +18,18 @@ interface CloneOptions extends CLIOptions {
   dryRun?: boolean;
 }
 
-// Engines totalmente compatíveis com implementação nativa específica
+// Engines with a reliable native clone implementation
 const FULLY_COMPATIBLE_ENGINES = new Set([
-  'postgresql',  // pg_dump + psql (nativo)
-  'mariadb',     // mysqldump + mysql (nativo)
-  'redis',       // BGSAVE + RDB copy (nativo)
-  'sqlite',      // File copy (confiável)
-  'duckdb'       // File copy (confiável)
+  'postgresql',  // pg_dump + psql
+  'mariadb',     // mysqldump + mysql
+  'redis',       // BGSAVE + RDB copy
+  'sqlite',      // host file copy (embedded)
+  'duckdb',      // host file copy (embedded)
+  'leveldb',     // host file copy (embedded)
+  'lmdb'         // host file copy (embedded)
 ]);
+
+const EMBEDDED_ENGINES = new Set(['sqlite', 'duckdb', 'leveldb', 'lmdb']);
 
 function validateCloneCompatibility(sourceEngine: string): { compatible: boolean; reason?: string } {
   if (!FULLY_COMPATIBLE_ENGINES.has(sourceEngine)) {
@@ -95,32 +100,39 @@ async function executeClone(sourceInstance: any, targetName: string): Promise<vo
   console.log(chalk.cyan(`🔄 Cloning ${sourceInstance.name} → ${targetName}...`));
   
   // Create target database with same configuration
-  await dockerManager.createDatabase(
+  const targetInstance = await dockerManager.createDatabase(
     targetName,
     sourceTemplate,
     {
       port: undefined, // Let it auto-allocate
-      adminDashboard: false,
       customEnv: { ...sourceInstance.environment }
     }
   );
 
-  // Start target database
-  await dockerManager.startDatabase(targetName);
-  
-  // Wait for database to be ready
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  if (targetInstance.status !== 'embedded') {
+    // Start target database
+    await dockerManager.startDatabase(targetName);
+
+    // Wait for database to be ready
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
 
   // Clone data based on database type
-  await cloneData(sourceInstance, targetName);
+  await cloneData(sourceInstance, targetInstance);
   
   console.log(chalk.green(`✅ Successfully cloned ${sourceInstance.name} → ${targetName}`));
 }
 
-async function cloneData(source: any, targetName: string): Promise<void> {
+async function cloneData(source: any, target: any): Promise<void> {
   const sourceContainer = `${source.name}-db`;
-  const targetContainer = `${targetName}-db`;
-  
+  const targetContainer = `${target.name}-db`;
+
+  if (EMBEDDED_ENGINES.has(source.engine)) {
+    // Embedded engines are host files — copy the data directory directly
+    await cp(source.volume, target.volume, { recursive: true, force: true });
+    return;
+  }
+
   switch (source.engine) {
     case 'postgresql':
       await clonePostgreSQL(sourceContainer, targetContainer, source.environment);
@@ -130,10 +142,6 @@ async function cloneData(source: any, targetName: string): Promise<void> {
       break;
     case 'redis':
       await cloneRedis(sourceContainer, targetContainer);
-      break;
-    case 'sqlite':
-    case 'duckdb':
-      await cloneFileDB(sourceContainer, targetContainer);
       break;
     default:
       // This situation should never happen due to compatibility validation
@@ -261,35 +269,6 @@ async function cloneRedis(sourceContainer: string, targetContainer: string): Pro
   });
 }
 
-async function cloneFileDB(sourceContainer: string, targetContainer: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Copy database file
-    const copyProcess = spawn('docker', [
-      'cp', `${sourceContainer}:/data/database.db`, '/tmp/hayai-clone.db'
-    ]);
-    
-    copyProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error('Failed to copy database file'));
-        return;
-      }
-      
-      // Restore to target
-      const restoreProcess = spawn('docker', [
-        'cp', '/tmp/hayai-clone.db', `${targetContainer}:/data/database.db`
-      ]);
-      
-      restoreProcess.on('close', (restoreCode) => {
-        restoreCode === 0 ? resolve() : reject(new Error('Failed to restore database file'));
-      });
-      
-      restoreProcess.on('error', reject);
-    });
-    
-    copyProcess.on('error', reject);
-  });
-}
-
 async function handleClone(options: CloneOptions): Promise<void> {
   const dockerManager = getDockerManager();
   await dockerManager.initialize();
@@ -302,8 +281,8 @@ async function handleClone(options: CloneOptions): Promise<void> {
     process.exit(1);
   }
   
-  // Check if source is running
-  if (sourceInstance.status !== 'running') {
+  // Check if source is running (embedded engines have no server to run)
+  if (sourceInstance.status !== 'running' && sourceInstance.status !== 'embedded') {
     console.error(chalk.red(`❌ Source database '${options.from}' must be running`));
     console.log(chalk.yellow(`💡 Start it with: ${chalk.cyan(`hayai start ${options.from}`)}`));
     process.exit(1);
@@ -411,16 +390,15 @@ export const cloneCommand = new Command('clone')
   .addHelpText('after', `
 ${chalk.bold('Supported Engines (Fully Compatible):')}
   ${chalk.green('✅ postgresql')}   - Native pg_dump + psql
-  ${chalk.green('✅ mariadb')}      - Native mysqldump + mysql  
+  ${chalk.green('✅ mariadb')}      - Native mysqldump + mysql
   ${chalk.green('✅ redis')}        - Native BGSAVE + RDB copy
-  ${chalk.green('✅ sqlite')}       - Reliable file copy
-  ${chalk.green('✅ duckdb')}       - Reliable file copy
+  ${chalk.green('✅ sqlite, duckdb, leveldb, lmdb')} - Host file copy (embedded)
 
 ${chalk.bold('Unsupported Engines (Manual Clone Required):')}
   ${chalk.red('❌ cassandra, influxdb2, influxdb3, timescaledb, questdb')}
   ${chalk.red('❌ qdrant, weaviate, milvus, arangodb, nebula')}
   ${chalk.red('❌ meilisearch, typesense, victoriametrics, horaedb')}
-  ${chalk.red('❌ leveldb, lmdb, tikv')}
+  ${chalk.red('❌ tikv')}
 
 ${chalk.bold('Examples:')}
   ${chalk.cyan('# Clone PostgreSQL database')}
