@@ -100,7 +100,6 @@ program
   .version(version, '-v, --version', 'output the current version')
   .option('--verbose', 'Enable verbose logging')
   .option('-q, --quiet', 'Suppress output except errors')
-  .option('--config <path>', 'Path to configuration file')
   .configureHelp({
     formatHelp: () => {
       return helpText + `
@@ -127,7 +126,6 @@ ${chalk.bold('OPTIONS')}
   ${chalk.cyan('-v, --version')}       Output the current version
   ${chalk.cyan('--verbose')}          Enable verbose logging
   ${chalk.cyan('-q, --quiet')}        Suppress output except errors
-  ${chalk.cyan('--config <path>')}    Path to configuration file
   ${chalk.cyan('-h, --help')}         Display help for command
 `;
     }
