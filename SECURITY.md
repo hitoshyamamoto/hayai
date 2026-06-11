@@ -1,370 +1,111 @@
-# 🔒 Hayai Security Guide
+# Security Policy
 
-This documentation covers the security implemented in Hayai for database operations, including `clone`, `merge`, and `migrate`.
+Hayai is a **local development tool**. It creates databases with known default
+credentials and exposes them on host ports for convenience. Do not use it to
+host production data, and do not run it on machines where untrusted users or
+networks can reach the published ports.
 
-## 🚨 **Identified Vulnerability Analysis**
+This document describes the security properties hayai actually has today,
+its known limitations, and how to report vulnerabilities.
 
-### **❌ Previous Security Issues**
+## Threat model
 
-#### **1. Hard-coded Credentials**
-```typescript
-// ⚠️ PROBLEM: Static passwords in code
-POSTGRES_PASSWORD: 'password',
-MYSQL_PASSWORD: 'password', 
-REDIS_PASSWORD: 'password'
-```
+Hayai assumes:
 
-#### **2. Credential Exposure in Commands**
-```bash
-# ⚠️ PROBLEM: Passwords visible in shell history
-pg_dump -U postgres  # Password may appear in logs
-mysqldump -u root    # Credentials exposed
-redis-cli -a password # Password visible in processes
-```
+- A single developer machine (or trusted CI runner).
+- Docker is trusted: anyone who can talk to the Docker daemon already
+  controls the host.
+- The data inside hayai-managed databases is development data.
 
-#### **3. Lack of Network Isolation**
-- Containers could communicate freely
-- No network segmentation between databases
-- Unnecessary service exposure
+If any of these assumptions don't hold for you, hayai is the wrong tool.
 
-#### **4. No Access Control**
-- Any user could clone/migrate any database
-- No permission validation
-- No operation tracking
+## Current security properties
 
-## ✅ **Implemented Security Solutions**
+### Default credentials
 
-### **🔐 1. Secure Credential Management**
+Database templates ship with **fixed, documented default credentials**
+(for example `admin` / `password` for PostgreSQL). This is a deliberate
+convenience trade-off for local development, the same one made by most
+docker-compose dev setups. Treat every hayai-managed database as if its
+password were public — because it is.
 
-#### **AES-256-CBC Encryption**
-```typescript
-// ✅ SOLUTION: Encrypted credentials
-private encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(this.encryptionKey, 'hex'), iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return iv.toString('hex') + ':' + encrypted;
-}
-```
+You can change credentials per instance via the `environment` section of a
+`.hayaidb` file or by passing custom environment values at creation time.
 
-#### **Secure Password Generation**
-```typescript
-// ✅ SOLUTION: Random passwords of 16+ characters
-public generateSecurePassword(length: number = 16): string {
-  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  // Secure implementation with crypto.randomInt()
-}
-```
+### Network exposure
 
-#### **Secure Storage**
-- **Location**: `.hayai/credentials.enc`
-- **Permissions**: `0o600` (only owner can read)
-- **Encryption Key**: `.hayai/.key` (unique per installation)
+Published ports bind to all interfaces (`0.0.0.0`), so hayai databases are
+reachable from your local network, not just localhost. On a laptop on
+untrusted Wi-Fi, combined with default credentials, this means anyone on the
+network segment can connect. Use a host firewall, or restrict bindings, if
+this matters in your environment. Binding to `127.0.0.1` by default is
+planned.
 
-### **🔒 2. Network Isolation**
+### Command execution
 
-#### **Isolated Docker Networks**
-```typescript
-// ✅ SOLUTION: Create isolated network for operations
-public async createNetworkIsolation(instances: string[]): Promise<string> {
-  const networkName = `hayai-op-${crypto.randomUUID().substring(0, 8)}`;
-  
-  const createNetwork = spawn('docker', [
-    'network', 'create',
-    '--driver', 'bridge',
-    '--internal', // Isolates from external networks
-    '--opt', 'com.docker.network.bridge.enable_icc=true',
-    networkName
-  ]);
-}
-```
+- Database tooling (`pg_dump`, `mysqldump`, `redis-cli`, ...) runs via
+  `docker exec` using each instance's own credentials, taken from its
+  environment.
+- MariaDB passwords are passed via the `MYSQL_PWD` environment variable so
+  they don't appear in the in-container command line. They are briefly
+  visible in the host process list as part of the `docker exec -e` arguments.
+- PostgreSQL access inside the container uses the local socket, which the
+  official image trusts — no password crosses a network.
 
-#### **Isolation Benefits**
-- Communication only between containers involved in operation
-- No external access during sensitive operations
-- Automatic cleanup after completion
+### The `hayai security` command
 
-### **📋 3. Audit and Logging**
+The `security` command provides **standalone utilities**:
 
-#### **Structured Logging**
-```typescript
-// ✅ SOLUTION: Complete audit trail
-export interface AuditLog {
-  timestamp: string;
-  operation: string;
-  source: string;
-  target: string;
-  user: string;
-  success: boolean;
-  error?: string;
-  ipAddress?: string;
-}
-```
+- `--generate` — generates random passwords using `crypto.randomInt`.
+- `--credentials` — stores per-instance credentials in
+  `.hayai/credentials.enc`, encrypted with AES-256-CBC. The encryption key
+  is stored beside the ciphertext in `.hayai/.key` (file mode `0600`).
+  **This protects against casual file reading only** — anyone with access to
+  the directory has the key too. It is obfuscation-at-rest, not a vault.
+- `--init` / `--policy` — writes and shows a security policy file
+  (`.hayai/security.json`).
+- `--audit` — shows the audit log at `.hayai/audit.log`.
 
-#### **All Operations Recorded**
-- **Location**: `.hayai/audit.log`
-- **Format**: Structured JSON
-- **Content**: Timestamp, operation, source, target, success/error
+### Honest limitations (important)
 
-### **⚡ 4. Rate Limiting and Access Control**
+The following are **not yet enforced**, even though the configuration for
+them exists:
 
-#### **Configurable Security Policy**
-```typescript
-// ✅ SOLUTION: Customizable policies
-export interface SecurityPolicy {
-  requireAuthentication: boolean;
-  allowCrossEngineOperations: boolean;
-  enableNetworkIsolation: boolean;
-  auditOperations: boolean;
-  maxOperationsPerHour: number;
-  allowedOperations: string[];
-}
-```
+- **The security policy is not consulted by `clone`, `merge`, or any other
+  data operation.** Setting `allowedOperations` or rate limits in the policy
+  file currently has no effect on those commands.
+- **Operations do not write to the audit log.** `hayai security --audit`
+  will show entries only if future versions wire operations into it.
+- **Rate limiting is per-process.** A CLI invocation lives for seconds, so
+  the configured operations-per-hour limit cannot constrain anything across
+  invocations.
+- **Network isolation helpers exist in the codebase but are unused** by the
+  commands.
+- The stored credentials in `.hayai/credentials.enc` are **not used by the
+  data commands**, which read credentials from each instance's environment.
 
-#### **Operation Validation**
-```typescript
-// ✅ SOLUTION: Granular control
-public async validateOperation(
-  operation: string, 
-  sourceInstance: string, 
-  targetInstance?: string,
-  user: string = 'local'
-): Promise<{ allowed: boolean; reason?: string }>
-```
+Wiring the policy, audit log, and credential store into the actual
+operations is tracked as roadmap work. Until then, configure them only if
+you want the files in place for the future — they do not protect anything
+today.
 
-### **🛡️ 5. Secure Command Execution**
+## Hardening recommendations
 
-#### **Protected Environment Variables**
-```typescript
-// ✅ SOLUTION: Credentials via environment, not arguments
-private async runSecureCommand(command: string[], credentials: SecurityCredentials): Promise<string> {
-  const env = {
-    ...process.env,
-    PGPASSWORD: credentials.password,  // PostgreSQL
-    MYSQL_PWD: credentials.password,   // MySQL/MariaDB
-    REDIS_PASSWORD: credentials.password // Redis
-  };
-}
-```
+- Keep hayai-managed databases off machines exposed to untrusted networks,
+  or firewall the published port range (default 5000–6000).
+- Override default credentials via instance environment when anything
+  semi-sensitive is loaded into a dev database.
+- Add `.hayai/` to your `.gitignore` (key material and credential store).
+- Snapshot before destructive operations: `hayai snapshot <name>`.
 
-#### **No Command Line Exposure**
-- Passwords never appear in `ps` or system logs
-- Shell history doesn't contain credentials
-- Processes don't expose sensitive information
+## Reporting a vulnerability
 
-## 🎯 **Security Command**
+If you find a security issue in hayai itself (command injection, path
+traversal, credentials leaking into logs, etc.):
 
-### **Initial Configuration**
-```bash
-# Configure security policies
-hayai security --init
-```
+- Open an issue at <https://github.com/hitoshyamamoto/hayai/issues>, or
+- Email the maintainer at <andrehitoshi.01@gmail.com> for anything you'd
+  rather not disclose publicly.
 
-### **Credential Management**
-```bash
-# Generate secure password
-hayai security --generate
-
-# Manage instance credentials
-hayai security --credentials
-
-# View current policy
-hayai security --policy
-```
-
-### **Auditing**
-```bash
-# View audit logs
-hayai security --audit
-
-# Security status
-hayai security
-```
-
-## 📊 **Security Levels**
-
-### **🟢 Maximum Security (Score: 90-100)**
-```yaml
-# .hayai/security.json
-{
-  "requireAuthentication": true,
-  "allowCrossEngineOperations": false,
-  "enableNetworkIsolation": true,
-  "auditOperations": true,
-  "maxOperationsPerHour": 10,
-  "allowedOperations": ["clone", "backup"]
-}
-```
-
-### **🟡 Balanced Security (Score: 60-80)**
-```yaml
-# Recommended default for development
-{
-  "requireAuthentication": false,
-  "allowCrossEngineOperations": true,
-  "enableNetworkIsolation": false,
-  "auditOperations": true,
-  "maxOperationsPerHour": 50,
-  "allowedOperations": ["clone", "merge", "migrate", "backup", "restore"]
-}
-```
-
-### **🔴 Minimum Security (Score: 20-40)**
-```yaml
-# Only for isolated environments
-{
-  "requireAuthentication": false,
-  "allowCrossEngineOperations": true,
-  "enableNetworkIsolation": false,
-  "auditOperations": false,
-  "maxOperationsPerHour": 999,
-  "allowedOperations": ["*"]
-}
-```
-
-## 🔄 **Security Flow in Operations**
-
-### **Secure Clone**
-```mermaid
-sequenceDiagram
-    participant User
-    participant Security
-    participant Docker
-    participant Source
-    participant Target
-
-    User->>Security: Validate Operation
-    Security->>Security: Check Rate Limits
-    Security->>Security: Get Encrypted Credentials
-    Security->>Docker: Create Isolated Network
-    Security->>Source: Connect to Network
-    Security->>Target: Connect to Network
-    Security->>Source: Secure Dump (env vars)
-    Security->>Target: Secure Restore (env vars)
-    Security->>Security: Audit Log
-    Security->>Docker: Cleanup Network
-```
-
-### **Secure Migrate**
-```mermaid
-sequenceDiagram
-    participant User
-    participant Security
-    participant Source
-    participant Target
-
-    User->>Security: Validate Migration
-    Security->>Security: Check Compatibility
-    Security->>Security: Network Isolation (if enabled)
-    Security->>Source: Health Check
-    Security->>Target: Create & Health Check
-    Security->>Security: Execute Migration Strategy
-    Security->>Security: Validate Data Integrity
-    Security->>Security: Audit Log
-```
-
-## 🚨 **Security Alerts**
-
-### **Critical Files**
-```bash
-# 🔴 CRITICAL: Keep secure
-.hayai/.key              # Encryption key
-.hayai/credentials.enc   # Encrypted credentials
-
-# 🟡 IMPORTANT: Regular backup
-.hayai/security.json     # Security policies
-.hayai/audit.log         # Audit logs
-```
-
-### **Recommended Permissions**
-```bash
-# Set restrictive permissions
-chmod 600 .hayai/.key
-chmod 600 .hayai/credentials.enc
-chmod 644 .hayai/security.json
-chmod 644 .hayai/audit.log
-```
-
-## 🛠️ **Best Practices**
-
-### **For Local Development**
-1. ✅ Enable audit logging
-2. ✅ Use auto-generated passwords
-3. ✅ Moderate rate limiting (50 ops/hour)
-4. ⚠️ Network isolation optional
-
-### **For Production Environments**
-1. ✅ Enable all security features
-2. ✅ Mandatory network isolation
-3. ✅ Strict rate limiting (10-20 ops/hour)
-4. ✅ Monitor audit logs
-5. ✅ Regular backup of `.hayai` directory
-
-### **For Teams**
-1. ✅ Standardized security policy
-2. ✅ Regular credential rotation
-3. ✅ Periodic audit log review
-4. ✅ Training on secure practices
-
-## 🔍 **Integrity Validation**
-
-### **Automatic Verification**
-```typescript
-// Post-operation validation
-public async validateDataIntegrity(instanceName: string, engine: string): Promise<boolean>
-```
-
-### **Implemented Checks**
-- **PostgreSQL**: Table verification and connectivity
-- **Redis**: Responsiveness testing
-- **MariaDB**: Data structure validation
-- **Others**: Basic connectivity checks
-
-## 📈 **Continuous Monitoring**
-
-### **Security Metrics**
-- Number of operations per hour/day
-- Success/failure rate
-- Most common operation types
-- Blocked operation attempts
-
-### **Recommended Alerts**
-- Failure rate > 20%
-- Frequent blocked operations
-- Encrypted credential access
-- Security policy modifications
-
-## ⚠️ **Known Limitations**
-
-### **Development Environment**
-- Focus on local security, not multi-user
-- File-based credentials, not HSM
-- Network isolation may affect performance
-
-### **Future Improvements**
-- [ ] HSM/Vault integration
-- [ ] Multi-factor authentication
-- [ ] RBAC (Role-Based Access Control)
-- [ ] LDAP/Active Directory integration
-- [ ] Digital operation signing
-
----
-
-## 🆘 **Support and Incidents**
-
-### **In Case of Compromise**
-1. **Stop all operations**: `hayai stop`
-2. **Regenerate keys**: Remove `.hayai/.key` and reinitialize
-3. **Rotate credentials**: `hayai security --credentials`
-4. **Review logs**: `hayai security --audit`
-5. **Reconfigure policy**: `hayai security --init`
-
-### **Report Vulnerabilities**
-- **GitHub Issues**: [Security Issues](https://github.com/hitoshyamamoto/hayai/issues)
-- **Email**: andrehitoshi.01@gmail.com
-- **Severity**: Classify with `security` label
-
----
-
-**This security implementation transforms Hayai from a basic tool into an enterprise-ready solution for secure database management.** 
+Please include reproduction steps and the hayai/Docker versions involved.
+You should receive a response within a week.
