@@ -4,6 +4,7 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
 import { getTemplate } from '../../core/templates.js';
+import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
 import fs from 'fs-extra';
@@ -262,9 +263,9 @@ async function executeMigration(sourceInstance: any, targetName: string, targetE
   }
 
   logMigrationStep('Creating target database container...');
-  
+
   // Create target database
-  await dockerManager.createDatabase(
+  const targetInstance = await dockerManager.createDatabase(
     targetName,
     targetTemplate,
     {
@@ -275,12 +276,12 @@ async function executeMigration(sourceInstance: any, targetName: string, targetE
   );
 
   logMigrationStep('Starting target database...', 'Waiting for initialization');
-  
+
   // Start target database
   await dockerManager.startDatabase(targetName);
-  
+
   // Wait for database to be ready with progress
-  await waitForDatabaseReady(targetName, targetEngine);
+  await waitForDatabaseReady(targetName, targetEngine, targetInstance.environment);
 
   logMigrationStep('Executing migration strategy...', getMigrationStrategy(sourceInstance.engine, targetEngine));
   
@@ -291,40 +292,51 @@ async function executeMigration(sourceInstance: any, targetName: string, targetE
   logMigrationStep('Migration completed successfully!', `${sourceInstance.name} → ${targetName}`);
 }
 
-async function waitForDatabaseReady(containerName: string, engine: string): Promise<void> {
+async function waitForDatabaseReady(
+  containerName: string,
+  engine: string,
+  environment: Record<string, string> = {}
+): Promise<void> {
   const maxAttempts = 30;
   const interval = 2000;
-  
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      logMigrationStep(`Health check (${attempt}/${maxAttempts})...`, `Checking ${engine} readiness`);
-      
-      const isReady = await checkDatabaseHealth(containerName, engine);
-      if (isReady) {
-        logMigrationStep('Database is ready!', 'Health check passed');
-        return;
-      }
-      
+    logMigrationStep(`Health check (${attempt}/${maxAttempts})...`, `Checking ${engine} readiness`);
+
+    const isReady = await checkDatabaseHealth(containerName, engine, environment).catch(() => false);
+    if (isReady) {
+      logMigrationStep('Database is ready!', 'Health check passed');
+      return;
+    }
+
+    if (attempt < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, interval));
-    } catch (error) {
-      if (attempt === maxAttempts) {
-        throw new Error(`Database failed to become ready after ${maxAttempts} attempts`);
-      }
     }
   }
+
+  throw new Error(`Database '${containerName}' failed to become ready after ${maxAttempts} attempts`);
 }
 
-async function checkDatabaseHealth(containerName: string, engine: string): Promise<boolean> {
+async function checkDatabaseHealth(
+  containerName: string,
+  engine: string,
+  environment: Record<string, string> = {}
+): Promise<boolean> {
   return new Promise((resolve) => {
     let healthCommand: string[] = [];
-    
+
     switch (engine) {
       case 'postgresql':
-      case 'timescaledb':
-        healthCommand = ['docker', 'exec', `${containerName}-db`, 'pg_isready', '-U', 'postgres'];
+      case 'timescaledb': {
+        const { user, database } = getPostgresExecCredentials(environment);
+        healthCommand = ['docker', 'exec', `${containerName}-db`, 'pg_isready', '-U', user, '-d', database];
         break;
+      }
       case 'mariadb':
-        healthCommand = ['docker', 'exec', `${containerName}-db`, 'mysqladmin', 'ping', '-u', 'root'];
+        healthCommand = [
+          'docker', 'exec', '-e', `MYSQL_PWD=${getMariaDBRootPassword(environment)}`,
+          `${containerName}-db`, 'mysqladmin', 'ping', '-u', 'root'
+        ];
         break;
       case 'redis':
         healthCommand = ['docker', 'exec', `${containerName}-db`, 'redis-cli', 'ping'];
@@ -369,7 +381,7 @@ async function executeMigrationStrategy(source: any, targetName: string, targetE
       await migratePrometheusToInflux();
       break;
     case 'sql_to_line_protocol':
-      await migrateSQLToLineProtocol(sourceContainer, targetContainer, source.engine);
+      await migrateSQLToLineProtocol(sourceContainer, targetContainer, source.engine, source.environment);
       break;
     case 'postgres_to_timescale':
       await migratePostgresToTimescale();
@@ -456,7 +468,12 @@ async function migrateInfluxLineProtocol(sourceContainer: string, targetContaine
   });
 }
 
-async function migrateSQLToLineProtocol(sourceContainer: string, targetContainer: string, sourceEngine: string): Promise<void> {
+async function migrateSQLToLineProtocol(
+  sourceContainer: string,
+  targetContainer: string,
+  sourceEngine: string,
+  sourceEnv: Record<string, string> = {}
+): Promise<void> {
   return new Promise((resolve, reject) => {
     logMigrationStep('Converting SQL data to Line Protocol format...');
     
@@ -486,9 +503,10 @@ async function migrateSQLToLineProtocol(sourceContainer: string, targetContainer
     logMigrationStep('Executing SQL conversion query...', `Engine: ${sourceEngine}`);
     
     // Export from SQL database
+    const { user, database } = getPostgresExecCredentials(sourceEnv);
     const exportProcess = spawn('docker', [
       'exec', sourceContainer,
-      'psql', '-U', 'postgres', '-t', '-c', conversionQuery
+      'psql', '-U', user, '-d', database, '-t', '-c', conversionQuery
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
     
     let convertedRows = 0;
