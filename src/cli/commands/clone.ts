@@ -4,6 +4,7 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
 import { getTemplate } from '../../core/templates.js';
+import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
 
@@ -122,10 +123,10 @@ async function cloneData(source: any, targetName: string): Promise<void> {
   
   switch (source.engine) {
     case 'postgresql':
-      await clonePostgreSQL(sourceContainer, targetContainer);
+      await clonePostgreSQL(sourceContainer, targetContainer, source.environment);
       break;
     case 'mariadb':
-      await cloneMariaDB(sourceContainer, targetContainer);
+      await cloneMariaDB(sourceContainer, targetContainer, source.environment);
       break;
     case 'redis':
       await cloneRedis(sourceContainer, targetContainer);
@@ -140,16 +141,24 @@ async function cloneData(source: any, targetName: string): Promise<void> {
   }
 }
 
-async function clonePostgreSQL(sourceContainer: string, targetContainer: string): Promise<void> {
+async function clonePostgreSQL(
+  sourceContainer: string,
+  targetContainer: string,
+  environment: Record<string, string> = {}
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    // The target is freshly created with the same environment, so the
+    // same-named empty database already exists there — a plain dump/restore
+    // into it is enough.
+    const { user, database } = getPostgresExecCredentials(environment);
     const dumpProcess = spawn('docker', [
       'exec', sourceContainer,
-      'pg_dump', '-U', 'postgres', '--clean', '--create'
+      'pg_dump', '-U', user, '-d', database
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
-    
+
     const restoreProcess = spawn('docker', [
       'exec', '-i', targetContainer,
-      'psql', '-U', 'postgres'
+      'psql', '-U', user, '-d', database
     ], { stdio: ['pipe', 'inherit', 'pipe'] });
     
     dumpProcess.stdout.pipe(restoreProcess.stdin);
@@ -163,15 +172,23 @@ async function clonePostgreSQL(sourceContainer: string, targetContainer: string)
   });
 }
 
-async function cloneMariaDB(sourceContainer: string, targetContainer: string): Promise<void> {
+async function cloneMariaDB(
+  sourceContainer: string,
+  targetContainer: string,
+  environment: Record<string, string> = {}
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    const rootPassword = getMariaDBRootPassword(environment);
+    const dumpTarget = environment.MYSQL_DATABASE
+      ? ['--databases', environment.MYSQL_DATABASE]
+      : ['--all-databases'];
     const dumpProcess = spawn('docker', [
-      'exec', sourceContainer,
-      'mysqldump', '-u', 'root', '--all-databases'
+      'exec', '-e', `MYSQL_PWD=${rootPassword}`, sourceContainer,
+      'mysqldump', '-u', 'root', ...dumpTarget
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
-    
+
     const restoreProcess = spawn('docker', [
-      'exec', '-i', targetContainer,
+      'exec', '-i', '-e', `MYSQL_PWD=${rootPassword}`, targetContainer,
       'mysql', '-u', 'root'
     ], { stdio: ['pipe', 'inherit', 'pipe'] });
     
