@@ -56,7 +56,7 @@ ${chalk.bold('EXAMPLES')}
   ${chalk.cyan('hayai studio')}
   
   ${chalk.gray('# Create Redis cache for development')}
-  ${chalk.cyan('hayai init -n cache -e redis --admin-dashboard -y')}
+  ${chalk.cyan('hayai init -n cache -e redis -y')}
   
   ${chalk.gray('# Clone database for testing')}
   ${chalk.cyan('hayai clone --from prod --to staging')}

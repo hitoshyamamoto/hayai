@@ -26,11 +26,6 @@ export const initCommand = new Command('init')
   .option('-n, --name <name>', 'Database instance name')
   .option('-e, --engine <engine>', 'Database engine (postgresql, mariadb, redis, etc.)')
   .option('-p, --port <port>', 'Custom port number', parseInt)
-  .option('--admin-dashboard', 'Enable admin dashboard')
-  .option('--no-admin-dashboard', 'Disable admin dashboard')
-  .option('--client-sdk', 'Generate client SDK')
-  .option('--no-client-sdk', 'Skip client SDK generation')
-  .option('--language <language>', 'Programming language for client SDK')
   .option('-y, --yes', 'Skip interactive prompts and use defaults')
   .action(async (options: InitOptions) => {
     try {
@@ -40,9 +35,6 @@ export const initCommand = new Command('init')
         name: string;
         engine: string;
         port?: number;
-        adminDashboard: boolean;
-        clientSdk: boolean;
-        language?: string;
       };
 
       if (options.yes && options.name && options.engine) {
@@ -51,9 +43,6 @@ export const initCommand = new Command('init')
           name: options.name,
           engine: options.engine,
           port: options.port,
-          adminDashboard: options.adminDashboard ?? true,
-          clientSdk: options.clientSdk ?? false,
-          language: options.language,
         };
         spinner.stop();
       } else {
@@ -120,35 +109,12 @@ export const initCommand = new Command('init')
             },
             filter: (input: string) => input ? parseInt(input) : undefined,
           },
-          {
-            type: 'confirm',
-            name: 'adminDashboard',
-            message: 'Enable admin dashboard?',
-            default: options.adminDashboard ?? true,
-          },
-          {
-            type: 'confirm',
-            name: 'clientSdk',
-            message: 'Generate client SDK?',
-            default: options.clientSdk ?? false,
-          },
-          {
-            type: 'list',
-            name: 'language',
-            message: 'Which programming language?',
-            choices: ['typescript', 'javascript', 'python'],
-            default: options.language || 'typescript',
-            when: (answers: any) => answers.clientSdk,
-          },
         ]);
 
         config = {
           name: answers.name,
           engine: options.engine || answers.engine,
           port: answers.port,
-          adminDashboard: answers.adminDashboard,
-          clientSdk: answers.clientSdk,
-          language: answers.language,
         };
       }
 
@@ -163,7 +129,6 @@ export const initCommand = new Command('init')
       
       const instance = await createDatabase(config.name, template, {
         port: config.port,
-        adminDashboard: config.adminDashboard,
       });
 
       createSpinner.succeed(`Successfully created ${template.name} instance '${config.name}'`);
@@ -185,11 +150,6 @@ export const initCommand = new Command('init')
       console.log(`  1. Run ${chalk.cyan('hayai start')} to start your database`);
       console.log(`  2. Run ${chalk.cyan('hayai list')} to see all your databases`);
       console.log(`  3. Run ${chalk.cyan('hayai studio')} to open admin dashboards`);
-      console.log(`  4. Check your ${chalk.cyan('.env')} file for connection details`);
-
-      if (config.clientSdk) {
-        console.log(`  5. Find your client SDK in ${chalk.cyan('./client/')} directory`);
-      }
 
     } catch (error) {
       console.error(chalk.red('\n❌ Failed to initialize database:'), error instanceof Error ? error.message : error);

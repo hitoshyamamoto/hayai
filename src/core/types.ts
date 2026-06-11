@@ -122,9 +122,6 @@ export interface InitOptions extends CLIOptions {
   engine: string;
   port?: number;
   volume?: string;
-  adminDashboard?: boolean;
-  clientSdk?: boolean;
-  language?: string;
   yes?: boolean;
 }
 
