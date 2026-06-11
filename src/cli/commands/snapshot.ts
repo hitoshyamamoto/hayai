@@ -3,9 +3,11 @@ import chalk from 'chalk';
 import ora from 'ora';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
 import { getDockerManager } from '../../core/docker.js';
 import { getTemplate } from '../../core/templates.js';
+import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { SnapshotOptions } from '../../core/types.js';
 
 async function createSnapshotDirectory(dir: string): Promise<void> {
@@ -29,10 +31,10 @@ async function createSnapshot(
   switch (instance.engine) {
     case 'postgresql':
     case 'timescaledb':
-      await createPostgreSQLSnapshot(instance.name, snapshotPath);
+      await createPostgreSQLSnapshot(instance.name, snapshotPath, instance.environment);
       break;
     case 'mariadb':
-      await createMariaDBSnapshot(instance.name, snapshotPath);
+      await createMariaDBSnapshot(instance.name, snapshotPath, instance.environment);
       break;
     case 'redis':
       await createRedisSnapshot(instance.name, snapshotPath);
@@ -49,14 +51,19 @@ async function createSnapshot(
   }
 }
 
-async function createPostgreSQLSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
+async function createPostgreSQLSnapshot(
+  instanceName: string,
+  snapshotPath: string,
+  environment: Record<string, string> = {}
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    const { user, database } = getPostgresExecCredentials(environment);
     const dumpProcess = spawn('docker', [
       'exec', `${instanceName}-db`,
-      'pg_dump', '-U', 'postgres', '--clean', '--create'
+      'pg_dump', '-U', user, '-d', database, '--clean', '--create'
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
 
-    const writeStream = require('fs').createWriteStream(snapshotPath);
+    const writeStream = createWriteStream(snapshotPath);
     dumpProcess.stdout.pipe(writeStream);
 
     dumpProcess.on('close', (code) => {
@@ -68,14 +75,19 @@ async function createPostgreSQLSnapshot(instanceName: string, snapshotPath: stri
   });
 }
 
-async function createMariaDBSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
+async function createMariaDBSnapshot(
+  instanceName: string,
+  snapshotPath: string,
+  environment: Record<string, string> = {}
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    const rootPassword = getMariaDBRootPassword(environment);
     const dumpProcess = spawn('docker', [
-      'exec', `${instanceName}-db`,
+      'exec', '-e', `MYSQL_PWD=${rootPassword}`, `${instanceName}-db`,
       'mysqldump', '-u', 'root', '--all-databases'
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
 
-    const writeStream = require('fs').createWriteStream(snapshotPath);
+    const writeStream = createWriteStream(snapshotPath);
     dumpProcess.stdout.pipe(writeStream);
 
     dumpProcess.on('close', (code) => {
