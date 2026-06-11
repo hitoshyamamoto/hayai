@@ -39,10 +39,16 @@ export const listCommand = new Command('list')
         switch (status) {
           case 'running': return chalk.green('●');
           case 'stopped': return chalk.red('●');
+          case 'embedded': return chalk.cyan('●');
           case 'error': return chalk.red('⚠');
           default: return chalk.gray('○');
         }
       };
+
+      const statusColor = (status: string) =>
+        status === 'running' ? chalk.green(status)
+          : status === 'embedded' ? chalk.cyan('embedded (file-based)')
+          : chalk.red(status);
 
       instances.forEach((instance, index) => {
         const template = getTemplate(instance.engine);
@@ -50,8 +56,8 @@ export const listCommand = new Command('list')
         
         console.log(`${index + 1}. ${chalk.bold(instance.name)} ${statusIcon(instance.status)}`);
         console.log(`   Engine: ${chalk.cyan(engineName)}`);
-        console.log(`   Status: ${chalk[instance.status === 'running' ? 'green' : 'red'](instance.status)}`);
-        console.log(`   Port: ${chalk.cyan(instance.port)}`);
+        console.log(`   Status: ${statusColor(instance.status)}`);
+        console.log(`   Port: ${instance.port > 0 ? chalk.cyan(instance.port) : chalk.gray('—')}`);
         console.log(`   URI: ${chalk.gray(instance.connection_uri)}`);
         console.log(`   Created: ${chalk.gray(new Date(instance.created_at).toLocaleDateString())}`);
         console.log('');
@@ -59,12 +65,16 @@ export const listCommand = new Command('list')
 
       const running = instances.filter(i => i.status === 'running').length;
       const stopped = instances.filter(i => i.status === 'stopped').length;
+      const embedded = instances.filter(i => i.status === 'embedded').length;
       const error = instances.filter(i => i.status === 'error').length;
 
       console.log(chalk.bold('Summary:'));
       console.log(`  Total: ${chalk.cyan(instances.length)}`);
       console.log(`  Running: ${chalk.green(running)}`);
       console.log(`  Stopped: ${chalk.red(stopped)}`);
+      if (embedded > 0) {
+        console.log(`  Embedded: ${chalk.cyan(embedded)}`);
+      }
       if (error > 0) {
         console.log(`  Error: ${chalk.red(error)}`);
       }

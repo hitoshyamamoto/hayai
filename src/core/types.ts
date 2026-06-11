@@ -64,7 +64,9 @@ export interface DatabaseInstance {
   port: number;
   volume: string;
   environment: Record<string, string>;
-  status: 'running' | 'stopped' | 'error';
+  // 'embedded' marks file-based engines (sqlite, duckdb, ...) that have no
+  // container and therefore no start/stop lifecycle.
+  status: 'running' | 'stopped' | 'error' | 'embedded';
   created_at: string;
   connection_uri: string;
 }

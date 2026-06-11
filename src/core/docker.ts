@@ -235,15 +235,14 @@ export class DockerManager {
       throw new Error(`Database instance '${name}' already exists`);
     }
 
-    // Get default port for this engine
-    const defaultPort = this.getDefaultPortForEngine(template.engine.name);
-    
-    // Only allocate port for databases that need them (not embedded)
+    // Embedded engines are plain files on the host — no container, no port
+    const isEmbedded = template.engine.ports.length === 0;
+
     let port = 0;
-    if (defaultPort > 0) {
+    if (!isEmbedded && this.getDefaultPortForEngine(template.engine.name) > 0) {
       port = await allocatePort(name, options.port);
     }
-    
+
     // Create data directory
     const dataDir = await getDataDirectory();
     const instanceDataDir = path.join(dataDir, name);
@@ -259,9 +258,9 @@ export class DockerManager {
         ...template.engine.environment,
         ...options.customEnv,
       },
-      status: 'stopped',
+      status: isEmbedded ? 'embedded' : 'stopped',
       created_at: new Date().toISOString(),
-      connection_uri: this.generateConnectionUri(template, port, name),
+      connection_uri: this.generateConnectionUri(template, port, name, instanceDataDir),
     };
 
     // Add to instances
@@ -282,14 +281,16 @@ export class DockerManager {
       throw new Error(`Database instance '${name}' not found`);
     }
 
-    const serviceName = `${name}-db`;
+    if (instance.status !== 'embedded') {
+      const serviceName = `${name}-db`;
 
-    try {
-      // Stop and remove container
-      await this.executeDockerCompose(['stop', serviceName]);
-      await this.executeDockerCompose(['rm', '-f', serviceName]);
-    } catch (error) {
-      console.warn(`Failed to stop/remove container for '${name}':`, error);
+      try {
+        // Stop and remove container
+        await this.executeDockerCompose(['stop', serviceName]);
+        await this.executeDockerCompose(['rm', '-f', serviceName]);
+      } catch (error) {
+        console.warn(`Failed to stop/remove container for '${name}':`, error);
+      }
     }
 
     // Deallocate port if it was allocated
@@ -316,11 +317,16 @@ export class DockerManager {
       throw new Error(`Database instance '${name}' not found`);
     }
 
+    if (instance.status === 'embedded') {
+      console.log(chalk.gray(`ℹ️  '${name}' is an embedded database — nothing to start. Data: ${instance.volume}`));
+      return;
+    }
+
     // Ensure compose file is up to date
     await this.updateComposeFile();
 
     const serviceName = `${name}-db`;
-    
+
     try {
       await this.executeDockerCompose(['up', '-d', serviceName]);
       instance.status = 'running';
@@ -340,11 +346,16 @@ export class DockerManager {
       throw new Error(`Database instance '${name}' not found`);
     }
 
+    if (instance.status === 'embedded') {
+      console.log(chalk.gray(`ℹ️  '${name}' is an embedded database — nothing to stop.`));
+      return;
+    }
+
     // Ensure compose file exists
     await this.updateComposeFile();
 
     const serviceName = `${name}-db`;
-    
+
     try {
       await this.executeDockerCompose(['stop', serviceName]);
       instance.status = 'stopped';
@@ -398,12 +409,14 @@ export class DockerManager {
       
       await this.executeDockerCompose(['up', '-d']);
       for (const [name, instance] of this.instances) {
+        if (instance.status === 'embedded') continue;
         instance.status = 'running';
         this.instances.set(name, instance);
       }
       await this.saveInstances();
     } catch (error) {
       for (const [name, instance] of this.instances) {
+        if (instance.status === 'embedded') continue;
         instance.status = 'error';
         this.instances.set(name, instance);
       }
@@ -419,12 +432,14 @@ export class DockerManager {
       
       await this.executeDockerCompose(['stop']);
       for (const [name, instance] of this.instances) {
+        if (instance.status === 'embedded') continue;
         instance.status = 'stopped';
         this.instances.set(name, instance);
       }
       await this.saveInstances();
     } catch (error) {
       for (const [name, instance] of this.instances) {
+        if (instance.status === 'embedded') continue;
         instance.status = 'error';
         this.instances.set(name, instance);
       }
@@ -466,6 +481,9 @@ export class DockerManager {
 
     // Add services for each database instance
     for (const [name, instance] of this.instances) {
+      if (instance.status === 'embedded') {
+        continue; // embedded engines are host files, not containers
+      }
       const serviceName = `${name}-db`;
       const defaultPort = this.getDefaultPortForEngine(instance.engine);
       
@@ -550,7 +568,7 @@ export class DockerManager {
     }
   }
 
-  private generateConnectionUri(template: DatabaseTemplate, port: number, dbName: string): string {
+  private generateConnectionUri(template: DatabaseTemplate, port: number, dbName: string, volumePath: string): string {
     const engine = template.engine;
     const env = engine.environment;
 
@@ -586,13 +604,16 @@ export class DockerManager {
         return `http://localhost:${port}`;
       
       case 'sqlite':
-        return `sqlite:///${dbName}.db`;
-      
+        return `sqlite://${path.join(volumePath, `${dbName}.db`)}`;
+
       case 'duckdb':
-        return `duckdb:///${dbName}.duckdb`;
-      
+        return `duckdb://${path.join(volumePath, `${dbName}.duckdb`)}`;
+
       case 'leveldb':
-        return `leveldb:///${dbName}`;
+        return `leveldb://${volumePath}`;
+
+      case 'lmdb':
+        return `lmdb://${volumePath}`;
       
       // Time Series Databases
       case 'influxdb3':
@@ -660,6 +681,7 @@ export class DockerManager {
       sqlite: 0, // No port for embedded
       duckdb: 0, // No port for embedded
       leveldb: 0, // No port for embedded
+      lmdb: 0, // No port for embedded
       // Time Series Databases
       influxdb3: 8086,
       influxdb2: 8086,
