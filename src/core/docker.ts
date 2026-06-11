@@ -11,6 +11,7 @@ import { allocatePort, deallocatePort } from './port-manager.js';
 interface DockerVerificationResult {
   isInstalled: boolean;
   isRunning: boolean;
+  composeAvailable?: boolean;
   version?: string;
   error?: string;
 }
@@ -61,16 +62,42 @@ export class DockerManager {
         
         // Check if Docker daemon is running
         const pingChild = spawn('docker', ['info'], { stdio: 'pipe' });
-        
+
         pingChild.on('close', (pingCode) => {
-          resolve({
-            isInstalled: true,
-            isRunning: pingCode === 0,
-            version,
-            error: pingCode !== 0 ? 'Docker daemon not running' : undefined
+          if (pingCode !== 0) {
+            resolve({
+              isInstalled: true,
+              isRunning: false,
+              version,
+              error: 'Docker daemon not running'
+            });
+            return;
+          }
+
+          // Daemon is up — verify the Compose V2 plugin is available
+          const composeChild = spawn('docker', ['compose', 'version'], { stdio: 'pipe' });
+
+          composeChild.on('close', (composeCode) => {
+            resolve({
+              isInstalled: true,
+              isRunning: true,
+              composeAvailable: composeCode === 0,
+              version,
+              error: composeCode !== 0 ? 'Docker Compose V2 plugin not found' : undefined
+            });
+          });
+
+          composeChild.on('error', () => {
+            resolve({
+              isInstalled: true,
+              isRunning: true,
+              composeAvailable: false,
+              version,
+              error: 'Docker Compose V2 plugin not found'
+            });
           });
         });
-        
+
         pingChild.on('error', () => {
           resolve({
             isInstalled: true,
@@ -124,6 +151,14 @@ export class DockerManager {
           break;
       }
       
+    } else if (result.isRunning && result.composeAvailable === false) {
+      console.log(chalk.yellow('🐳 Docker is running but the Compose V2 plugin is missing.'));
+      console.log(chalk.gray(`Version: ${result.version}\n`));
+
+      console.log(chalk.bold('📦 Install Docker Compose V2:\n'));
+      console.log(chalk.cyan('  • Docker Desktop: update to a recent version (Compose V2 is included)'));
+      console.log(chalk.cyan('  • Debian/Ubuntu: sudo apt-get install docker-compose-plugin'));
+      console.log(chalk.cyan('  • Other platforms: https://docs.docker.com/compose/install/'));
     } else if (!result.isRunning) {
       console.log(chalk.yellow('🐳 Docker is installed but not running.'));
       console.log(chalk.gray(`Version: ${result.version}\n`));
@@ -157,8 +192,8 @@ export class DockerManager {
     }
     
     const result = await this.checkDockerInstallation();
-    
-    if (!result.isInstalled || !result.isRunning) {
+
+    if (!result.isInstalled || !result.isRunning || !result.composeAvailable) {
       this.showDockerInstallationInstructions(result);
       process.exit(1);
     }
@@ -327,7 +362,7 @@ export class DockerManager {
     const composeFilePath = await getComposeFilePath();
     
     return new Promise((resolve, reject) => {
-      const child = spawn('docker-compose', ['-f', composeFilePath, ...args], {
+      const child = spawn('docker', ['compose', '-f', composeFilePath, ...args], {
         stdio: ['inherit', 'pipe', 'pipe']
       });
 
