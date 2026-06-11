@@ -34,8 +34,7 @@ async function previewMerge(sourceInstance: any, targetInstance: any): Promise<v
   
   console.log(chalk.bold('\nMerge Operation:'));
   console.log(`  ${chalk.green(sourceInstance.name)} data → ${chalk.yellow(targetInstance.name)}`);
-  console.log(`  ${chalk.green(targetInstance.name)} data → ${chalk.yellow(sourceInstance.name)}`);
-  console.log(`  Result: Both databases will contain combined data`);
+  console.log(`  Result: target contains combined data; source is unchanged`);
   
   console.log(chalk.yellow('\n⚠️  Warning:'));
   console.log('  • This operation is irreversible without backups');
@@ -51,7 +50,7 @@ async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise
   const sourceContainer = `${sourceInstance.name}-db`;
   const targetContainer = `${targetInstance.name}-db`;
   
-  console.log(chalk.cyan(`🔄 Merging ${sourceInstance.name} ↔ ${targetInstance.name}...`));
+  console.log(chalk.cyan(`🔄 Merging ${sourceInstance.name} → ${targetInstance.name}...`));
   
   // Check engine compatibility
   if (sourceInstance.engine !== targetInstance.engine) {
@@ -74,7 +73,7 @@ async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise
     }
   }
   
-  console.log(chalk.green(`✅ Successfully merged ${sourceInstance.name} ↔ ${targetInstance.name}`));
+  console.log(chalk.green(`✅ Successfully merged ${sourceInstance.name} → ${targetInstance.name}`));
 }
 
 async function mergePostgreSQL(
@@ -331,7 +330,7 @@ async function handleMerge(options: MergeOptions): Promise<void> {
       {
         type: 'confirm',
         name: 'proceed',
-        message: `⚠️  Merge ${options.source} ↔ ${options.target}? This operation is irreversible!`,
+        message: `⚠️  Merge ${options.source} into ${options.target}? This operation is irreversible!`,
         default: false,
       },
     ]);
@@ -351,7 +350,7 @@ async function handleMerge(options: MergeOptions): Promise<void> {
     spinner.succeed('Database merge completed successfully');
     
     console.log(chalk.green('\n✅ Merge operation completed!'));
-    console.log(chalk.yellow('💡 Both databases now contain the combined data'));
+    console.log(chalk.yellow(`💡 '${options.target}' now contains the combined data; '${options.source}' is unchanged`));
     console.log(chalk.yellow('💡 Commands:'));
     console.log(`  • ${chalk.cyan('hayai list')} - View all databases`);
     console.log(`  • ${chalk.cyan('hayai studio')} - Open admin dashboards`);
@@ -364,7 +363,7 @@ async function handleMerge(options: MergeOptions): Promise<void> {
 }
 
 export const mergeCommand = new Command('merge')
-  .description('Merge two database instances bidirectionally')
+  .description('Merge a source database into a target database')
   .option('-s, --source <name>', 'Source database name')
   .option('-t, --target <name>', 'Target database name')
   .option('--preview', 'Preview the merge operation without executing')
@@ -386,10 +385,9 @@ ${chalk.bold('Examples:')}
   hayai merge -s dbA -t dbB --execute --force
 
 ${chalk.bold('How Merge Works:')}
-  • Data from dbA is copied to dbB
-  • Data from dbB is copied to dbA  
-  • Both databases end up with combined data
-  • Conflicts are resolved automatically when possible
+  • Data from the source is copied into the target
+  • The source database is left unchanged
+  • Conflicts are resolved in favor of the source when possible
 
 ${chalk.bold('Supported Engines:')}
   • PostgreSQL, MariaDB: SQL-level merging
