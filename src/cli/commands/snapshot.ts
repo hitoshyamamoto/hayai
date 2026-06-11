@@ -18,6 +18,8 @@ async function createSnapshotDirectory(dir: string): Promise<void> {
   }
 }
 
+const EMBEDDED_ENGINES = new Set(['sqlite', 'duckdb', 'leveldb', 'lmdb']);
+
 async function createSnapshot(
   instance: any,
   snapshotPath: string
@@ -25,6 +27,12 @@ async function createSnapshot(
   const template = getTemplate(instance.engine);
   if (!template) {
     throw new Error(`Template not found for engine: ${instance.engine}`);
+  }
+
+  // Embedded engines are host files — archive the data directory directly
+  if (EMBEDDED_ENGINES.has(instance.engine)) {
+    await createEmbeddedSnapshot(instance.volume, snapshotPath);
+    return;
   }
 
   // Choose appropriate backup method based on database type
@@ -175,6 +183,18 @@ async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string
   });
 }
 
+async function createEmbeddedSnapshot(volumePath: string, snapshotPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tarProcess = spawn('tar', ['-czf', snapshotPath, '-C', volumePath, '.']);
+
+    tarProcess.on('close', (code) => {
+      code === 0 ? resolve() : reject(new Error('Embedded database snapshot failed'));
+    });
+
+    tarProcess.on('error', reject);
+  });
+}
+
 async function createGenericSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const backupProcess = spawn('docker', [
@@ -263,7 +283,7 @@ export const snapshotCommand = new Command('snapshot')
         process.exit(1);
       }
 
-      if (instance.status !== 'running') {
+      if (instance.status !== 'running' && instance.status !== 'embedded') {
         console.error(chalk.red(`❌ Database '${name}' must be running to create snapshot`));
         console.log(chalk.yellow(`💡 Start it with: ${chalk.cyan(`hayai start ${name}`)}`));
         process.exit(1);
@@ -281,6 +301,7 @@ export const snapshotCommand = new Command('snapshot')
       let extension = 'sql';
       if (instance.engine === 'redis') extension = 'rdb';
       if (instance.engine.includes('influx') || instance.engine === 'cassandra') extension = 'tar.gz';
+      if (EMBEDDED_ENGINES.has(instance.engine)) extension = 'tar.gz';
       if (options.format === 'tar') extension = 'tar.gz';
       
       const snapshotPath = path.join(outputDir, `${snapshotName}.${extension}`);
