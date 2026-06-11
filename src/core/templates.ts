@@ -26,15 +26,6 @@ export class DatabaseTemplates {
           retries: 5,
         },
       },
-      admin_dashboard: {
-        enabled: true,
-        port: 8080,
-        image: 'adminer:4.8.1',
-      },
-      client_sdk: {
-        enabled: true,
-        languages: ['typescript', 'python', 'javascript'],
-      },
     });
 
     this.addTemplate('mariadb', {
@@ -58,11 +49,6 @@ export class DatabaseTemplates {
           timeout: '5s',
           retries: 5,
         },
-      },
-      admin_dashboard: {
-        enabled: true,
-        port: 8080,
-        image: 'adminer:4.8.1',
       },
     });
 
@@ -111,11 +97,6 @@ export class DatabaseTemplates {
           timeout: '3s',
           retries: 5,
         },
-      },
-      admin_dashboard: {
-        enabled: true,
-        port: 8081,
-        image: 'rediscommander/redis-commander:latest',
       },
     });
 
@@ -217,8 +198,7 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 6333,
-        image: 'qdrant/qdrant:v1.7.0',
+        path: '/dashboard',
       },
     });
 
@@ -292,8 +272,6 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 8529,
-        image: 'arangodb:3.11',
       },
     });
 
@@ -316,11 +294,6 @@ export class DatabaseTemplates {
           timeout: '10s',
           retries: 5,
         },
-      },
-      admin_dashboard: {
-        enabled: true,
-        port: 7001,
-        image: 'vesoft/nebula-studio:v3.8.0',
       },
     });
 
@@ -347,8 +320,6 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 7700,
-        image: 'getmeili/meilisearch:v1.5',
       },
     });
 
@@ -398,12 +369,6 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 8086,
-        image: 'influxdb:latest',
-      },
-      client_sdk: {
-        enabled: true,
-        languages: ['typescript', 'python', 'javascript', 'go'],
       },
     });
 
@@ -433,12 +398,6 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 8086,
-        image: 'influxdb:2.7-alpine',
-      },
-      client_sdk: {
-        enabled: true,
-        languages: ['typescript', 'python', 'javascript', 'go', 'java'],
       },
     });
 
@@ -462,15 +421,6 @@ export class DatabaseTemplates {
           timeout: '5s',
           retries: 5,
         },
-      },
-      admin_dashboard: {
-        enabled: true,
-        port: 8080,
-        image: 'adminer:4.8.1',
-      },
-      client_sdk: {
-        enabled: true,
-        languages: ['typescript', 'python', 'javascript', 'go', 'rust'],
       },
     });
 
@@ -497,12 +447,6 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 9000,
-        image: 'questdb/questdb:latest',
-      },
-      client_sdk: {
-        enabled: true,
-        languages: ['typescript', 'python', 'javascript', 'java', 'go'],
       },
     });
 
@@ -528,8 +472,7 @@ export class DatabaseTemplates {
       },
       admin_dashboard: {
         enabled: true,
-        port: 8428,
-        image: 'victoriametrics/victoria-metrics:latest',
+        path: '/vmui',
       },
     });
 

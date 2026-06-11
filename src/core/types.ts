@@ -72,14 +72,12 @@ export interface DatabaseInstance {
 export interface DatabaseTemplate {
   name: string;
   engine: DatabaseEngine;
+  // Web UI served by the database container itself, reachable on the
+  // instance's published port. Engines whose dashboards would require a
+  // separate container (adminer, redis-commander, ...) don't declare one.
   admin_dashboard?: {
     enabled: boolean;
-    port: number;
-    image: string;
-  };
-  client_sdk?: {
-    enabled: boolean;
-    languages: string[];
+    path?: string;
   };
 }
 
