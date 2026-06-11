@@ -177,8 +177,8 @@ export const initCommand = new Command('init')
       console.log(`  Connection URI: ${chalk.cyan(instance.connection_uri)}`);
       console.log(`  Data Volume: ${chalk.gray(instance.volume)}`);
       
-      if (config.adminDashboard && template.admin_dashboard) {
-        console.log(`  Admin Dashboard: ${chalk.cyan(`http://localhost:${template.admin_dashboard.port}`)}`);
+      if (template.admin_dashboard?.enabled) {
+        console.log(`  Admin Dashboard: run ${chalk.cyan(`hayai studio ${instance.name}`)} once started`);
       }
 
       console.log(chalk.yellow('\n📋 Next Steps:'));

@@ -72,9 +72,11 @@ export const studioCommand = new Command('studio')
       for (const instance of validInstances) {
         const template = getTemplate(instance.engine);
         
-        if (template?.admin_dashboard?.enabled) {
-          const dashboardPort = options.port || template.admin_dashboard.port;
-          const dashboardUrl = `http://localhost:${dashboardPort}`;
+        if (template?.admin_dashboard?.enabled && instance.port > 0) {
+          // The dashboard is served by the database container itself, so it
+          // lives on the instance's published host port.
+          const dashboardPort = options.port || instance.port;
+          const dashboardUrl = `http://localhost:${dashboardPort}${template.admin_dashboard.path || ''}`;
           
           console.log(`${chalk.bold(instance.name)} (${template.name})`);
           console.log(`  Dashboard: ${chalk.cyan(dashboardUrl)}`);
@@ -134,22 +136,8 @@ export const studioCommand = new Command('studio')
 
         console.log(chalk.yellow('\n💡 Tips:'));
         console.log('  • Use connection details from `hayai list` to connect');
-        console.log('  • Default credentials are usually admin/password');
         console.log('  • Add `--no-open` to prevent auto-opening browser');
         console.log('  • Add `--check-ports` to verify dashboard accessibility');
-
-        // Show database-specific tips
-        const uniqueEngines = [...new Set(dashboardUrls.map(d => d.engine))];
-        if (uniqueEngines.includes('PostgreSQL')) {
-          console.log(chalk.blue('\n🐘 PostgreSQL Tips:'));
-          console.log('  • Use pgAdmin dashboard for advanced management');
-          console.log('  • Connect with: Host=localhost, Database=database, User=admin');
-        }
-        if (uniqueEngines.includes('Redis')) {
-          console.log(chalk.red('\n🔴 Redis Tips:'));
-          console.log('  • Use Redis Commander for data exploration');
-          console.log('  • Connect with: localhost:6379 (no password by default)');
-        }
 
       } else {
         console.log(chalk.yellow('⚠ No dashboards available'));
