@@ -150,60 +150,83 @@ async function mergeMariaDB(
 
 async function mergeRedis(sourceContainer: string, targetContainer: string): Promise<void> {
   console.log(chalk.yellow('🔄 Merging Redis databases...'));
-  
+
+  // SCAN instead of KEYS — KEYS blocks the server on large datasets
+  const keys = await scanRedisKeys(sourceContainer);
+  if (keys.length === 0) {
+    return; // Nothing to merge
+  }
+
+  // MIGRATE moves each value container-to-container over the shared compose
+  // network, preserving binary data — piping DUMP output through a text
+  // pipeline corrupts it. COPY keeps the source intact; REPLACE resolves
+  // conflicts in favor of the source.
+  const failed: string[] = [];
+  for (const key of keys) {
+    const ok = await migrateRedisKey(sourceContainer, targetContainer, key);
+    if (!ok) {
+      failed.push(key);
+    }
+  }
+
+  if (failed.length > 0) {
+    throw new Error(
+      `Redis merge failed for ${failed.length}/${keys.length} keys (e.g. '${failed[0]}')`
+    );
+  }
+
+  console.log(chalk.gray(`   ${keys.length} keys merged`));
+}
+
+async function scanRedisKeys(container: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    // Get all keys from source
-    const sourceKeysProcess = spawn('docker', [
-      'exec', sourceContainer, 'redis-cli', 'KEYS', '*'
-    ]);
-    
-    let sourceKeys = '';
-    sourceKeysProcess.stdout.on('data', (data) => {
-      sourceKeys += data.toString();
+    const scanProcess = spawn('docker', ['exec', container, 'redis-cli', '--scan']);
+
+    let output = '';
+    scanProcess.stdout.on('data', (data) => {
+      output += data.toString();
     });
-    
-    sourceKeysProcess.on('close', () => {
-      if (sourceKeys.trim().split('\n').filter(key => key.trim()).length === 0) {
-        resolve(); // No keys to copy
-        return;
+
+    scanProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve(output.split('\n').map(key => key.trim()).filter(Boolean));
+      } else {
+        reject(new Error('Failed to scan source Redis keys'));
       }
-      
-      // Copy keys with REPLACE to handle conflicts
-      Promise.all(sourceKeys.trim().split('\n').filter(key => key.trim()).map(key => copyRedisKey(sourceContainer, targetContainer, key)))
-        .then(() => resolve())
-        .catch(reject);
     });
-    
-    sourceKeysProcess.on('error', reject);
+
+    scanProcess.on('error', reject);
   });
 }
 
-async function copyRedisKey(fromContainer: string, toContainer: string, key: string): Promise<void> {
-  return new Promise((resolve) => {
-    const copyProcess = spawn('docker', [
-      'exec', fromContainer, 'redis-cli', 'DUMP', key
+async function migrateRedisKey(
+  sourceContainer: string,
+  targetContainer: string,
+  key: string
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    // The compose service name doubles as the DNS name on the shared network.
+    const migrateProcess = spawn('docker', [
+      'exec', sourceContainer,
+      'redis-cli', 'MIGRATE', targetContainer, '6379', key, '0', '5000', 'COPY', 'REPLACE'
     ]);
-    
-    let dumpData = '';
-    copyProcess.stdout.on('data', (data) => {
-      dumpData += data.toString();
+
+    // redis-cli exits 0 even when the server replies with an error,
+    // so success must be read from the reply itself.
+    let reply = '';
+    migrateProcess.stdout.on('data', (data) => {
+      reply += data.toString();
     });
-    
-    copyProcess.on('close', () => {
-      if (dumpData.trim()) {
-        // Restore with REPLACE
-        const restoreProcess = spawn('docker', [
-          'exec', toContainer, 'redis-cli', 'RESTORE', key, '0', dumpData.trim(), 'REPLACE'
-        ]);
-        
-        restoreProcess.on('close', () => resolve());
-        restoreProcess.on('error', () => resolve()); // Continue on errors
-      } else {
-        resolve();
-      }
+    migrateProcess.stderr.on('data', (data) => {
+      reply += data.toString();
     });
-    
-    copyProcess.on('error', () => resolve());
+
+    migrateProcess.on('close', () => {
+      const result = reply.trim();
+      resolve(result === 'OK' || result === 'NOKEY');
+    });
+
+    migrateProcess.on('error', reject);
   });
 }
 
