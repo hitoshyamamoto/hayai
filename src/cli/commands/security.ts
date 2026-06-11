@@ -274,11 +274,13 @@ async function handleSecurity(options: SecurityOptions): Promise<void> {
   const policy = await securityManager.getSecurityPolicy();
   
   console.log(chalk.bold('Security Status:'));
-  
+  console.log(chalk.yellow('  ⚠️  The policy below is configuration only — it is not yet'));
+  console.log(chalk.yellow('     enforced by clone/merge or other data commands. See SECURITY.md.'));
+
   // Check security settings
   const securityScore = calculateSecurityScore(policy);
   const scoreColor = securityScore >= 80 ? chalk.green : securityScore >= 60 ? chalk.yellow : chalk.red;
-  
+
   console.log(`  Security Score: ${scoreColor(securityScore)}/100`);
   console.log(`  Audit Logging: ${policy.auditOperations ? chalk.green('✅ Enabled') : chalk.red('❌ Disabled')}`);
   console.log(`  Network Isolation: ${policy.enableNetworkIsolation ? chalk.green('✅ Enabled') : chalk.yellow('⚠️  Optional')}`);
@@ -341,29 +343,22 @@ export const securityCommand = new Command('security')
   .option('--generate', 'Generate a secure password')
   .option('--verbose', 'Enable verbose output')
   .addHelpText('after', `
-${chalk.bold('Security Features:')}
+${chalk.bold('Status:')}
+  ${chalk.yellow('⚠️  These are standalone utilities. The security policy, audit log,')}
+  ${chalk.yellow('and stored credentials are NOT yet enforced or used by the data')}
+  ${chalk.yellow('commands (clone, merge, snapshot, ...). See SECURITY.md for details.')}
 
-${chalk.cyan('🔐 Credential Management:')}
-  • Encrypted credential storage with AES-256-CBC
-  • Secure password generation (16+ characters)
-  • Per-instance credential isolation
-  • No plain-text password exposure
+${chalk.bold('What this command provides today:')}
 
-${chalk.cyan('🔒 Network Isolation:')}
-  • Isolated Docker networks for operations
-  • Container-to-container communication control
-  • External network access restrictions
+${chalk.cyan('🔐 Credential Utilities:')}
+  • Random password generation (crypto-based)
+  • Per-instance credential storage, AES-256-CBC encrypted at rest
+  • The key lives next to the ciphertext (.hayai/.key, mode 0600) —
+    this deters casual reading, it is not a vault
 
-${chalk.cyan('📋 Audit Logging:')}
-  • All operations logged with timestamps
-  • Success/failure tracking
-  • User attribution and IP logging
-  • Compliance-ready audit trails
-
-${chalk.cyan('⚡ Rate Limiting:')}
-  • Configurable operation limits per hour
-  • Protection against abuse
-  • User-based rate tracking
+${chalk.cyan('📋 Policy & Audit Files:')}
+  • Writes .hayai/security.json and reads .hayai/audit.log
+  • Operations do not consult or write these yet
 
 ${chalk.bold('Examples:')}
   ${chalk.cyan('# Configure security for the first time')}
