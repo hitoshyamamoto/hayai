@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
+import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
 
@@ -60,10 +61,10 @@ async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise
     // Same engine - use engine-specific merge
     switch (sourceInstance.engine) {
       case 'postgresql':
-        await mergePostgreSQL(sourceContainer, targetContainer);
+        await mergePostgreSQL(sourceContainer, targetContainer, sourceInstance.environment, targetInstance.environment);
         break;
       case 'mariadb':
-        await mergeMariaDB(sourceContainer, targetContainer);
+        await mergeMariaDB(sourceContainer, targetContainer, sourceInstance.environment, targetInstance.environment);
         break;
       case 'redis':
         await mergeRedis(sourceContainer, targetContainer);
@@ -76,19 +77,26 @@ async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise
   console.log(chalk.green(`✅ Successfully merged ${sourceInstance.name} ↔ ${targetInstance.name}`));
 }
 
-async function mergePostgreSQL(sourceContainer: string, targetContainer: string): Promise<void> {
+async function mergePostgreSQL(
+  sourceContainer: string,
+  targetContainer: string,
+  sourceEnv: Record<string, string> = {},
+  targetEnv: Record<string, string> = {}
+): Promise<void> {
   console.log(chalk.yellow('🔄 Merging PostgreSQL databases...'));
-  
+
   return new Promise((resolve, reject) => {
     // Simplified merge - in real implementation would be more sophisticated
+    const source = getPostgresExecCredentials(sourceEnv);
+    const target = getPostgresExecCredentials(targetEnv);
     const dumpProcess = spawn('docker', [
       'exec', sourceContainer,
-      'pg_dump', '-U', 'postgres', '--data-only'
+      'pg_dump', '-U', source.user, '-d', source.database, '--data-only'
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
-    
+
     const restoreProcess = spawn('docker', [
       'exec', '-i', targetContainer,
-      'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=0'
+      'psql', '-U', target.user, '-d', target.database, '-v', 'ON_ERROR_STOP=0'
     ], { stdio: ['pipe', 'inherit', 'pipe'] });
     
     dumpProcess.stdout.pipe(restoreProcess.stdin);
@@ -103,18 +111,30 @@ async function mergePostgreSQL(sourceContainer: string, targetContainer: string)
   });
 }
 
-async function mergeMariaDB(sourceContainer: string, targetContainer: string): Promise<void> {
+async function mergeMariaDB(
+  sourceContainer: string,
+  targetContainer: string,
+  sourceEnv: Record<string, string> = {},
+  targetEnv: Record<string, string> = {}
+): Promise<void> {
   console.log(chalk.yellow('🔄 Merging MariaDB databases...'));
-  
+
   return new Promise((resolve, reject) => {
+    const sourceDb = sourceEnv.MYSQL_DATABASE;
+    const targetDb = targetEnv.MYSQL_DATABASE;
+    if (!sourceDb || !targetDb) {
+      reject(new Error('MariaDB merge requires MYSQL_DATABASE to be set on both instances'));
+      return;
+    }
+
     const dumpProcess = spawn('docker', [
-      'exec', sourceContainer,
-      'mysqldump', '-u', 'root', '--no-create-info', '--complete-insert'
+      'exec', '-e', `MYSQL_PWD=${getMariaDBRootPassword(sourceEnv)}`, sourceContainer,
+      'mysqldump', '-u', 'root', '--no-create-info', '--complete-insert', sourceDb
     ], { stdio: ['inherit', 'pipe', 'pipe'] });
-    
+
     const restoreProcess = spawn('docker', [
-      'exec', '-i', targetContainer,
-      'mysql', '-u', 'root'
+      'exec', '-i', '-e', `MYSQL_PWD=${getMariaDBRootPassword(targetEnv)}`, targetContainer,
+      'mysql', '-u', 'root', '--force', targetDb
     ], { stdio: ['pipe', 'inherit', 'pipe'] });
     
     dumpProcess.stdout.pipe(restoreProcess.stdin);
@@ -277,13 +297,13 @@ async function handleMerge(options: MergeOptions): Promise<void> {
   // Preview mode
   if (options.preview || (!options.execute && !options.force)) {
     await previewMerge(sourceInstance, targetInstance);
-    
+
     if (!options.execute) {
       console.log(chalk.cyan('\n💡 Use --execute to perform the merge operation'));
       return;
     }
   }
-  
+
   // Final confirmation for destructive operation
   if (!options.force && options.execute) {
     const { proceed } = await inquirer.prompt([
