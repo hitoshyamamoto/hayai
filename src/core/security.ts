@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, chmod } from 'fs/promises';
+import { readFileSync, writeFileSync, mkdirSync, chmodSync } from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import { spawn } from 'child_process';
@@ -62,14 +63,14 @@ export class SecurityManager {
     const keyPath = path.join(process.cwd(), '.hayai', '.key');
     
     try {
-      return require('fs').readFileSync(keyPath, 'utf8');
+      return readFileSync(keyPath, 'utf8');
     } catch {
       const key = crypto.randomBytes(32).toString('hex');
       try {
-        require('fs').mkdirSync(path.dirname(keyPath), { recursive: true });
-        require('fs').writeFileSync(keyPath, key);
-        require('fs').chmodSync(keyPath, 0o600); // Only owner can read
-      } catch (error) {
+        mkdirSync(path.dirname(keyPath), { recursive: true });
+        writeFileSync(keyPath, key);
+        chmodSync(keyPath, 0o600); // Only owner can read
+      } catch {
         console.warn(chalk.yellow('⚠️  Could not save encryption key securely'));
       }
       return key;
@@ -142,7 +143,7 @@ export class SecurityManager {
       await writeFile(this.credentialsPath, encryptedCredentials);
       
       // Set restrictive permissions
-      await require('fs').promises.chmod(this.credentialsPath, 0o600);
+      await chmod(this.credentialsPath, 0o600);
       
     } catch (error) {
       throw new Error(`Failed to store credentials securely: ${error}`);
