@@ -76,13 +76,11 @@
   "dependencies": {
     "chalk": "^5.4.1",
     "commander": "^12.1.0",
-    "fs-extra": "^11.3.0",
     "inquirer": "^9.2.12",
     "ora": "^8.2.0",
     "yaml": "^2.8.0"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
     "@types/inquirer": "^9.0.8",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.16.0",
