@@ -56,7 +56,7 @@ export const studioCommand = new Command('studio')
       const dockerManager = getDockerManager();
       await dockerManager.initialize();
 
-      let instances = name ? [dockerManager.getInstance(name)] : dockerManager.getAllInstances();
+      const instances = name ? [dockerManager.getInstance(name)] : dockerManager.getAllInstances();
       const validInstances = instances.filter(instance => instance !== undefined);
 
       if (validInstances.length === 0) {
