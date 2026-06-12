@@ -14,7 +14,7 @@
   
   ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
   ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
-  ![Databases](https://img.shields.io/badge/Databases-19-success)
+  ![Databases](https://img.shields.io/badge/Databases-22-success)
   ![CLI](https://img.shields.io/badge/CLI-Tool-blue)
   
   ![Security](https://img.shields.io/badge/Security-0%20vulnerabilities-brightgreen)
@@ -89,12 +89,12 @@ hayai studio
 
 ## 🎯 Key Features
 
-- **🔓 100% Open-Source**: Only includes databases with permissive licenses
+- **🔓 Open-Source Focused**: Open-source engines (one source-available: TimescaleDB)
 - **⚡ One Command Setup**: Initialize any database with a single command
 - **🐳 Docker-Powered**: Automated container management with health checks
+- **📁 Embedded Engines as Files**: SQLite, DuckDB, LevelDB, and LMDB are managed as plain host files — no container overhead
 - **🔧 Smart Port Management**: Intelligent port allocation (5000-6000 range)
-- **🌐 Admin Dashboards**: Built-in web interfaces for database management
-- **🔗 Environment Integration**: Automatic `.env` file updates with connection URIs
+- **🌐 Admin Dashboards**: One-command access to the web UIs that engines ship built-in (Qdrant, ArangoDB, InfluxDB, QuestDB, Meilisearch, VictoriaMetrics)
 - **✨ Modern CLI**: Interactive prompts with beautiful output
 
 ## 📦 Supported Databases
@@ -202,9 +202,8 @@ hayai --version
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `hayai init --config .hayaidb` | Initialize from configuration file | `hayai init --config .hayaidb` |
-| `hayai validate --config .hayaidb` | Validate configuration file | `hayai validate --config .hayaidb` |
-| `hayai config check` | Check configuration syntax | `hayai config check` |
+| `hayai export` | Export current databases to a `.hayaidb` file | `hayai export -o .hayaidb` |
+| `hayai sync` | Create databases from a `.hayaidb` file | `hayai sync --dry-run` |
 
 📚 **See [HAYAIDB.md](HAYAIDB.md) for complete configuration file documentation**
 
@@ -212,11 +211,12 @@ hayai --version
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `hayai remove <name>` | Remove database instance | `hayai remove mydb --force` |
-| `hayai logs <name>` | View database logs | `hayai logs mydb --follow` |
-| `hayai snapshot <name>` | Create database snapshot | `hayai snapshot mydb --compress` |
+| `hayai remove <name>` | Remove database instance | `hayai remove mydb --keep-data` |
+| `hayai logs <name>` | Stream database container logs | `hayai logs mydb --follow` |
+| `hayai snapshot <name>` | Create database snapshot | `hayai snapshot mydb` |
 | `hayai clone <options>` | Clone database instances | `hayai clone --from prod --to staging` |
-| `hayai merge <options>` | Merge two databases bidirectionally | `hayai merge --source dbA --target dbB --preview` |
+| `hayai merge <options>` | Merge a source database into a target | `hayai merge --source dbA --target dbB --preview` |
+| `hayai migrate <options>` | Plan a cross-engine migration (validation + guidance; execution not yet implemented) | `hayai migrate -f db1 -t db2 -e influxdb3 --dry-run` |
 
 📸 **For complete backup and snapshot documentation, see: [ABOUT_BACKUP.md](ABOUT_BACKUP.md)**
 
@@ -232,11 +232,8 @@ hayai init
 # Quick setup
 hayai init -n mydb -e postgresql -p 5432 -y
 
-# With admin dashboard
-hayai init --admin-dashboard
-
-# Custom configuration
-hayai init -n cache -e redis -p 6379 --memory 512mb
+# Redis cache
+hayai init -n cache -e redis -y
 ```
 
 **Options:**
@@ -244,7 +241,6 @@ hayai init -n cache -e redis -p 6379 --memory 512mb
 - `-e, --engine <engine>` - Database engine
 - `-p, --port <port>` - Port number
 - `-y, --yes` - Skip confirmations
-- `--admin-dashboard` - Enable admin dashboard
 </details>
 
 <details>
@@ -256,9 +252,6 @@ hayai start
 
 # Start specific database
 hayai start mydb
-
-# Start with custom options
-hayai start --detach --timeout 60
 ```
 </details>
 
@@ -289,7 +282,7 @@ hayai clone -f prod -t staging --force -y
 - `--force` - Overwrite existing target databases
 - `--dry-run` - Show what would be cloned without executing
 
-**Supported Engines:** PostgreSQL, MariaDB, Redis, SQLite, DuckDB, and all other engines with generic data copying.
+**Supported Engines:** PostgreSQL, MariaDB, Redis (native tooling); SQLite, DuckDB, LevelDB, LMDB (host file copy). Other engines require manual cloning with their native tools — the command prints guidance.
 </details>
 
 <details>
@@ -317,12 +310,11 @@ hayai merge -s dbA -t dbB --execute --force
 - `--force` - Skip confirmation prompts
 
 **How Merge Works:**
-- Data from source is copied to target
-- Data from target is copied to source  
-- Both databases end up with combined data
-- Conflicts are resolved automatically when possible
+- Data from the source is copied into the target
+- The source database is left unchanged
+- Conflicts are resolved in favor of the source when possible
 
-**Supported Engines:** PostgreSQL (SQL-level), MariaDB (SQL-level), Redis (key-level with REPLACE), others (generic file-based).
+**Supported Engines:** PostgreSQL (SQL-level), MariaDB (SQL-level), Redis (key-level via native MIGRATE), others (generic file-based, best-effort).
 </details>
 
 <details>
@@ -337,9 +329,6 @@ hayai list --running
 
 # JSON output
 hayai list --format json
-
-# Detailed view
-hayai list --verbose
 ```
 </details>
 
@@ -405,14 +394,14 @@ databases:
 
 ### 🔧 **Usage**
 ```bash
-# Initialize all databases from .hayaidb
-hayai init --config .hayaidb
+# Create all databases declared in .hayaidb (skips ones that exist)
+hayai sync
 
-# Start all databases
-hayai start --config .hayaidb
+# Preview what sync would create
+hayai sync --dry-run
 
-# Stop all databases
-hayai stop --config .hayaidb
+# Export your current databases to a .hayaidb file
+hayai export
 ```
 
 📚 **For complete documentation and examples, see: [HAYAIDB.md](HAYAIDB.md)**
@@ -477,7 +466,7 @@ hayai init -n graph -e arangodb -p 8529 -y
 - **Interactive CLI** - Beautiful prompts with validation
 - **Smart Defaults** - Sensible configuration out of the box
 - **Error Handling** - Clear error messages and recovery suggestions
-- **Auto-completion** - Shell completion support
+- **Honest Output** - Commands report what actually happened, and unimplemented paths say so
 
 ### 🚀 Performance & Flexibility
 - **Fast Setup** - Databases ready in seconds
@@ -495,20 +484,14 @@ hayai init -n graph -e arangodb -p 8529 -y
 ## 🔄 Dependency Management
 
 ### Core Dependencies
-- **chalk** ^5.4.1 - Terminal colors and styling
-- **commander** ^12.1.0 - Command-line interface framework
-- **dockerode** ^4.0.7 - Docker Engine API client
-- **inquirer** ^9.2.12 - Interactive command-line prompts
-- **ora** ^8.2.0 - Loading spinners and progress indicators
-- **yaml** ^2.8.0 - YAML parser and stringifier
+- **chalk** - Terminal colors and styling
+- **commander** - Command-line interface framework
+- **inquirer** - Interactive command-line prompts
+- **ora** - Loading spinners and progress indicators
+- **yaml** - YAML parser and stringifier
 
-### Development Dependencies
-- **typescript** ^5.8.3 - TypeScript compiler
-- **@types/node** ^22.10.6 - Node.js type definitions
-- **eslint** ^8.57.1 - Code linting
-- **jest** ^29.7.0 - Testing framework
-
-All dependencies are regularly updated and security-audited.
+Docker is driven through the `docker` CLI (Compose V2), so there is no
+Docker SDK dependency. `npm audit` currently reports 0 vulnerabilities.
 
 ## 🎨 Project Branding
 
