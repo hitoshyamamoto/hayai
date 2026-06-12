@@ -1,32 +1,39 @@
-# Contributing to Hayai v0.4.1
+# Contributing to Hayai
 
 Welcome to Hayai! We're building the fastest way to manage local databases with Docker.
 
-## 📦 Database Categories (v0.4.1)
+## 📦 Database Categories
 
-Hayai uses **8 technical categories** based on query interface, not deployment method:
-
-- **SQL (4):** postgresql, mariadb, sqlite, duckdb
-- **Embedded (1):** leveldb  
-- **Key-Value (1):** redis
-- **Wide Column (1):** cassandra
-- **Vector (3):** qdrant, weaviate, milvus
-- **Graph (1):** arangodb
-- **Search (2):** meilisearch, typesense
-- **Time Series (6):** influxdb2, influxdb3, timescaledb, questdb, victoriametrics, horaedb
+Hayai categorizes engines by **query interface** (SQL, graph, vector, ...), not
+deployment method. The authoritative list lives in `src/core/templates.ts` —
+run `hayai init` or check the README for the current set, rather than trusting
+any hardcoded list in docs.
 
 ### Adding New Database Support
 
 When adding a new database:
 1. Categorize by **query interface** (SQL, Graph, etc.) not deployment
 2. Update `src/core/templates.ts` with the new template
-3. Update `src/core/types.ts` if new category needed
+3. Update `src/core/types.ts` if a new category is needed
 4. Update README.md and CLI help text
 5. Add tests for the new database template
+6. Only declare an `admin_dashboard` if the database container itself serves a
+   web UI — hayai does not create separate dashboard containers
+
+## Workflow
+
+We use a pull-request flow on short-lived branches:
+
+1. Branch from `master` using a conventional prefix: `feat/...`, `fix/...`,
+   `docs/...`, `chore/...`
+2. Keep each commit single-concern with a conventional message (see below)
+3. Open a PR; CI must pass (lint, build, tests)
+4. A `feat:` change should come with a test proving the feature does something
+5. Branches are deleted after merge
 
 ## Commit Message Guidelines
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/) specification.
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
 ### Format
 
@@ -74,6 +81,8 @@ revert: revert commit abc123
 4. Keep the subject line under 50 characters
 5. Use the body to explain what and why vs. how
 6. Separate subject from body with a blank line
+7. The type must be truthful: a `feat:` commit delivers a working feature,
+   not a placeholder or simulation
 
 ### Scopes (optional)
 
@@ -93,10 +102,13 @@ docs(readme): update installation section
 4. Run tests: `npm test`
 5. Check linting: `npm run lint`
 
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the full environment guide.
+
 ## Pull Request Process
 
 1. Follow the commit message guidelines
-2. Update documentation if needed
+2. Update documentation if behavior changes — docs must describe what the
+   code actually does
 3. Add tests for new features
 4. Ensure all tests pass
 5. Update the README.md if needed
@@ -107,4 +119,4 @@ docs(readme): update installation section
 - Follow ESLint configuration
 - Use Prettier for code formatting
 - Write meaningful variable and function names
-- Add JSDoc comments for public APIs 
+- Add JSDoc comments for public APIs
