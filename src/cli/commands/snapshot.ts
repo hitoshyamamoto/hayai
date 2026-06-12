@@ -269,8 +269,6 @@ export const snapshotCommand = new Command('snapshot')
   .description('Create snapshots of database instances')
   .argument('<name>', 'Database instance name')
   .option('-o, --output <path>', 'Output directory for snapshots', './snapshots')
-  .option('-c, --compress', 'Compress the snapshot')
-  .option('--format <format>', 'Snapshot format (sql, rdb, tar)', 'sql')
   .action(async (name: string, options: SnapshotOptions) => {
     try {
       const dockerManager = getDockerManager();
@@ -297,12 +295,11 @@ export const snapshotCommand = new Command('snapshot')
       const snapshotName = `${name}-snapshot-${timestamp}`;
       const outputDir = options.output || path.join(process.cwd(), 'snapshots');
       
-      // Determine file extension based on database type and format
+      // The extension follows the engine's native backup format
       let extension = 'sql';
       if (instance.engine === 'redis') extension = 'rdb';
       if (instance.engine.includes('influx') || instance.engine === 'cassandra') extension = 'tar.gz';
       if (EMBEDDED_ENGINES.has(instance.engine)) extension = 'tar.gz';
-      if (options.format === 'tar') extension = 'tar.gz';
       
       const snapshotPath = path.join(outputDir, `${snapshotName}.${extension}`);
 

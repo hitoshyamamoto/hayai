@@ -136,8 +136,6 @@ export interface LogOptions extends CLIOptions {
 export interface SnapshotOptions extends CLIOptions {
   name: string;
   output?: string;
-  compress?: boolean;
-  format?: string;
 }
 
 export type CommandResult = {
