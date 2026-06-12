@@ -365,18 +365,17 @@ snapshotCommand
           const stats = await fs.stat(filePath);
           const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
           
-          // Parse filename to extract info
-          const parts = file.split('-snapshot-');
-          const dbName = parts[0];
-          const timestamp = parts[1]?.split('.')[0];
-          const extension = path.extname(file);
-          
+          const dbName = file.split('-snapshot-')[0];
+          const format = file.endsWith('.tar.gz') ? 'tar.gz' : path.extname(file).slice(1);
+
           return {
             file,
             dbName,
-            timestamp: timestamp ? new Date(timestamp.replace(/-/g, ':').replace(/T/, ' ')) : new Date(),
+            // The filename timestamp is lossy (':' and '.' replaced) — the
+            // file's mtime is the reliable creation record.
+            timestamp: stats.mtime,
             size: sizeMB,
-            extension
+            format
           };
         })
       );
@@ -389,7 +388,7 @@ snapshotCommand
         console.log(`   Database: ${chalk.cyan(snapshot.dbName)}`);
         console.log(`   Created:  ${chalk.gray(snapshot.timestamp.toLocaleString())}`);
         console.log(`   Size:     ${chalk.yellow(snapshot.size)} MB`);
-        console.log(`   Format:   ${chalk.magenta(snapshot.extension.substring(1))}`);
+        console.log(`   Format:   ${chalk.magenta(snapshot.format)}`);
         console.log('');
       });
 
