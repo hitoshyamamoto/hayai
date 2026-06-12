@@ -1,57 +1,30 @@
 # Development Setup Guide
 
-## 🚀 Hayai v0.4.1 - Development Environment
-
 Before you start working on Hayai, make sure you have the following installed:
 
 - **Node.js** (v18 or higher)
-- **npm** or **yarn**
-- **Docker** (for testing database containers)
+- **npm**
+- **Docker** with the Compose V2 plugin (for testing database containers)
 - **Git**
 
-## 📦 Current Database Support (v0.4.1)
-
-Hayai supports **19 databases across 8 technical categories**:
-
-- **SQL (4):** postgresql, mariadb, sqlite, duckdb
-- **Embedded (1):** leveldb  
-- **Key-Value (1):** redis
-- **Wide Column (1):** cassandra
-- **Vector (3):** qdrant, weaviate, milvus
-- **Graph (1):** arangodb
-- **Search (2):** meilisearch, typesense
-- **Time Series (6):** influxdb2, influxdb3, timescaledb, questdb, victoriametrics, horaedb
+The supported database list lives in `src/core/templates.ts` — that file is
+the source of truth, not this document.
 
 ## Installation
 
-### Option 1: Using WSL (Recommended for Windows users)
+```bash
+git clone https://github.com/hitoshyamamoto/hayai.git
+cd hayai
+npm install
+```
 
-1. Open WSL terminal
-2. Navigate to your project directory:
-   ```bash
-   cd /home/hitoshi/Documents/github/hitoshyamamoto/hayai
-   ```
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-### Option 2: Using Windows PowerShell
-
-1. Install Node.js for Windows from [nodejs.org](https://nodejs.org/)
-2. Open PowerShell in your project directory
-3. Install dependencies:
-   ```powershell
-   npm install
-   ```
+On Windows, WSL2 is recommended (Docker Desktop integrates with it directly),
+but PowerShell with Node.js for Windows works too.
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-npm install
-
-# Start development mode with hot reload
+# Build and run the CLI once
 npm run dev
 
 # Build the project
@@ -60,16 +33,12 @@ npm run build
 # Run tests
 npm test
 
-# Format code
-npm run format
-
-# Lint code
+# Lint code (and auto-fix)
 npm run lint
+npm run lint:fix
 ```
 
 ## Testing Your CLI
-
-After installation, you can test your CLI in development mode:
 
 ```bash
 # Run the CLI in development mode
@@ -89,69 +58,56 @@ npm run dev -- stop
 ```
 hayai/
 ├── src/
-│   ├── cli/                 # CLI interface
-│   │   ├── index.ts         # Main CLI entry point
-│   │   └── commands/        # Command implementations
-│   │       ├── init.ts      # Database initialization
-│   │       ├── start.ts     # Start containers
-│   │       ├── stop.ts      # Stop containers
-│   │       ├── list.ts      # List instances
-│   │       ├── remove.ts    # Remove instances
-│   │       ├── logs.ts      # Show logs
-│   │       ├── studio.ts    # Admin dashboard
-│   │       └── snapshot.ts  # Create snapshots
-│   ├── core/                # Core engine logic
-│   │   ├── types.ts         # Type definitions
-│   │   ├── config.ts        # Configuration management
-│   │   ├── docker.ts        # Docker integration
-│   │   ├── port-manager.ts  # Port allocation
-│   │   └── templates.ts     # Template generation
-│   ├── templates/           # Database templates
-│   ├── api/                 # Optional REST API
-│   └── dashboard/           # Optional web dashboard
-├── dist/                    # Compiled output
-├── package.json             # Dependencies and scripts
-├── tsconfig.json            # TypeScript configuration
-├── hayai.config.yaml         # Global configuration
-└── .gitignore               # Git ignore rules
+│   ├── cli/                  # CLI interface
+│   │   ├── index.ts          # Main CLI entry point
+│   │   └── commands/         # One file per command:
+│   │                         #   init, start, stop, list, remove, logs,
+│   │                         #   studio, snapshot, clone, merge, migrate,
+│   │                         #   export, sync, security
+│   ├── core/                 # Core engine logic
+│   │   ├── types.ts          # Type definitions
+│   │   ├── config.ts         # hayai.config.yaml management
+│   │   ├── docker.ts         # Docker / Compose integration
+│   │   ├── credentials.ts    # Credentials for exec'd db tooling
+│   │   ├── port-manager.ts   # Port allocation
+│   │   ├── templates.ts      # Database engine templates (source of truth)
+│   │   ├── hayaidb.ts        # .hayaidb export/sync
+│   │   └── security.ts       # Standalone security utilities
+│   └── tests/                # Jest tests
+├── dist/                     # Compiled output
+├── package.json              # Dependencies and scripts
+├── tsconfig.json             # TypeScript configuration
+└── hayai.config.yaml         # Global configuration
 ```
 
-## Next Steps
+## How Things Work
 
-1. **Install dependencies** using one of the methods above
-2. **Implement Docker integration** in `src/core/docker.ts`
-3. **Create database templates** in `src/templates/`
-4. **Test with real databases** using Docker
-5. **Add more database engines** to the supported list
-6. **Implement admin dashboard** features
-7. **Add comprehensive tests**
+- Hayai writes a `docker-compose.yml` in the working directory and drives it
+  with `docker compose` (V2). Each instance becomes a `<name>-db` service.
+- Embedded engines (sqlite, duckdb, leveldb, lmdb) get **no container** —
+  they are plain files under `./data/<name>/` with status `embedded`.
+- Instance state is persisted in `./data/instances.json`; port allocations in
+  `./data/port-allocations.json`.
+- Database tooling (pg_dump, mysqldump, redis-cli, ...) runs via `docker exec`
+  using each instance's own environment credentials
+  (see `src/core/credentials.ts`).
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/commit/PR workflow.
 
 ## Troubleshooting
 
-### WSL Path Issues
-If you encounter path issues with WSL, make sure you're working in the correct directory:
-```bash
-pwd  # Should show /home/hitoshi/Documents/github/hitoshyamamoto/hayai
-```
-
-### Node.js Not Found
-If Node.js is not found, install it:
-- **WSL**: `sudo apt update && sudo apt install nodejs npm`
-- **Windows**: Download from [nodejs.org](https://nodejs.org/)
-
 ### Docker Issues
-Make sure Docker is running:
+Make sure Docker and Compose V2 are available:
 ```bash
 docker --version
+docker compose version
 docker ps
 ```
 
-Ready to build the future of local database management! 🚀 
+### Node.js Not Found
+- **WSL/Linux**: `sudo apt update && sudo apt install nodejs npm`
+- **Windows**: Download from [nodejs.org](https://nodejs.org/)
+
+Ready to build the future of local database management! 🚀
