@@ -411,7 +411,7 @@ export const cloneCommand = new Command('clone')
   .description('Clone database instances (compatible engines only)')
   .option('-f, --from <name>', 'Source database name')
   .option('-t, --to <name>', 'Target database name (1:1 clone)')
-  .option('-tm, --to-multiple <names>', 'Target database names (comma-separated, 1:N clone)')
+  .option('--tm, --to-multiple <names>', 'Target database names (comma-separated, 1:N clone)')
   .option('-y, --confirm', 'Skip confirmation prompt')
   .option('--force', 'Overwrite existing target databases')
   .option('--dry-run', 'Show what would be cloned without executing')
@@ -438,7 +438,7 @@ ${chalk.bold('Examples:')}
 
   ${chalk.cyan('# Clone Redis to multiple instances')}
   hayai clone --from cache-redis --to-multiple "test1,test2,test3"
-  hayai clone -f cache-redis -tm "dev,staging,qa" -y
+  hayai clone -f cache-redis --tm "dev,staging,qa" -y
 
   ${chalk.cyan('# Safe cloning with preview')}
   hayai clone -f prod-mariadb -t staging-mariadb --dry-run
