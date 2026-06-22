@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, javascript]
+    groups:
+      # Toolchain churns often and is dev-only — batch it into one PR.
+      dev-tooling:
+        dependency-type: development
+        patterns:
+          - eslint*
+          - '@typescript-eslint/*'
+          - typescript
+          - prettier
+          - jest
+          - ts-jest
+          - '@types/*'
+          - tsx
+      # Runtime deps: group low-risk updates, surface majors on their own.
+      runtime-minor:
+        dependency-type: production
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
+    groups:
+      github-actions:
+        patterns: ['*']
