@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Minimum Node.js is now 22.13** (was 18). Node 18 and 20 are both end-of-life;
+  the runtime dependency bumps below require Node 22+. CI now tests Node 22 and 24.
+- Update runtime dependencies: `commander` 12 → 15, `inquirer` 9 → 14 (drops the
+  obsolete `@types/inquirer`; the package ships its own types), `ora` 8 → 9,
+  `chalk` 5.4 → 5.6.
+- Update tooling: ESLint 9 → 10, Jest 29 → 30, and the supporting `@types`/tsx
+  packages. Pin `actions/checkout` to v7. TypeScript stays on 5.x while
+  typescript-eslint catches up to 6.
+
 ## [0.8.0] - 2026-06-22
 
 ### Added

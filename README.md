@@ -8,7 +8,7 @@
   ![npm version](https://img.shields.io/npm/v/hayai-db.svg)
   ![Status](https://img.shields.io/badge/status-beta%20(0.x)-orange.svg)
   ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-  ![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+  ![Node.js](https://img.shields.io/badge/node-%3E%3D22.13.0-brightgreen.svg)
   
   ![npm downloads](https://img.shields.io/npm/dw/hayai-db.svg)
   ![GitHub stars](https://img.shields.io/github/stars/hitoshyamamoto/hayai.svg?style=social)
@@ -175,7 +175,7 @@ All databases are **100% open-source** with permissive licenses:
 ## 🛠️ Installation
 
 ### Prerequisites
-- **Node.js** 18.0.0 or higher
+- **Node.js** 22.13.0 or higher
 - **Docker** and **Docker Compose**
 
 ### Install Hayai

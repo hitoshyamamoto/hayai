@@ -41,7 +41,7 @@ async function initializeSecurity(): Promise<void> {
       name: 'maxOperationsPerHour',
       message: 'Maximum operations per hour per user:',
       default: 50,
-      validate: (input) => input > 0 || 'Must be greater than 0',
+      validate: (input) => (input ?? 0) > 0 || 'Must be greater than 0',
     },
     {
       type: 'checkbox',
@@ -189,7 +189,7 @@ async function manageCredentials(): Promise<void> {
           name: 'length',
           message: 'Password length:',
           default: 16,
-          validate: (input) => input >= 8 || 'Minimum length is 8 characters',
+          validate: (input) => (input ?? 0) >= 8 || 'Minimum length is 8 characters',
         },
       ]);
 
