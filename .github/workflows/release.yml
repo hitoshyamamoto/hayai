@@ -3,42 +3,110 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: read
 
 jobs:
-  release:
+  # Build and pack once. The exact tarball that passed tests here is the one
+  # that gets published — no rebuild drift between test and release.
+  build:
+    name: Build distribution
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      id-token: write # npm provenance
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        registry-url: 'https://registry.npmjs.org'
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20.x
+          cache: npm
 
-    - name: Install dependencies
-      run: npm ci
+      - run: npm ci
 
-    - name: Build project
-      run: npm run build
+      - name: Guard — tag must match package.json version
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${PKG_VERSION}"
+            exit 1
+          fi
 
-    - name: Run tests
-      run: npm test
+      - name: Build
+        run: npm run build
 
-    - name: Publish to npm
-      run: npm publish --access public --provenance
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Test
+        run: npm test
 
-    - name: Create GitHub Release
-      run: gh release create "$GITHUB_REF_NAME" --title "Release $GITHUB_REF_NAME" --generate-notes
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack tarball
+        run: npm pack
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-tarball
+          path: '*.tgz'
+          retention-days: 7
+
+  publish:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # provenance attestation
+    steps:
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20.x
+          registry-url: https://registry.npmjs.org
+
+      - name: Download tarball
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-tarball
+
+      - name: Publish
+        run: npm publish ./*.tgz --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Cut release from the CHANGELOG section
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # Extract the body of the `## [VERSION]` section, stopping at the
+          # next `## [` header. A fixed-string match avoids treating the
+          # version's dots as regex wildcards.
+          node - "$VERSION" <<'JS' > release-notes.md
+          const version = process.argv[2];
+          const header = `## [${version}]`;
+          const lines = require('fs').readFileSync('CHANGELOG.md', 'utf8').split('\n');
+          const out = [];
+          let grab = false;
+          for (const line of lines) {
+            if (!grab && line.startsWith(header)) { grab = true; continue; }
+            // Stop at the next version header or the trailing link-reference block.
+            if (grab && (line.startsWith('## [') || /^\[[^\]]+\]:\s/.test(line))) break;
+            if (grab) out.push(line);
+          }
+          process.stdout.write(out.join('\n').trim() + '\n');
+          JS
+          if [ ! -s release-notes.md ] || ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::No CHANGELOG.md section found for ${VERSION}"
+            exit 1
+          fi
+          gh release create "${TAG}" --title "${TAG}" --notes-file release-notes.md
