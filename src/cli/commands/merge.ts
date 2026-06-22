@@ -4,8 +4,14 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
+import { recordOperation } from '../../core/security.js';
+import { snapshotInstance } from './snapshot.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
+
+// Engines with a real, key/row-level merge. Anything else (or a cross-engine
+// pair) is refused rather than guessed at.
+const MERGEABLE_ENGINES = new Set(['postgresql', 'mariadb', 'redis']);
 
 interface MergeOptions extends CLIOptions {
   source: string;
@@ -38,7 +44,7 @@ async function previewMerge(sourceInstance: any, targetInstance: any): Promise<v
   
   console.log(chalk.yellow('\n⚠️  Warning:'));
   console.log('  • This operation is irreversible without backups');
-  console.log('  • Both databases must be compatible engines');
+  console.log('  • Source and target must run the same supported engine');
   console.log('  • Data conflicts may need manual resolution');
   
   console.log(chalk.bold('\nNext Steps:'));
@@ -49,30 +55,24 @@ async function previewMerge(sourceInstance: any, targetInstance: any): Promise<v
 async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise<void> {
   const sourceContainer = `${sourceInstance.name}-db`;
   const targetContainer = `${targetInstance.name}-db`;
-  
+
   console.log(chalk.cyan(`🔄 Merging ${sourceInstance.name} → ${targetInstance.name}...`));
-  
-  // Check engine compatibility
-  if (sourceInstance.engine !== targetInstance.engine) {
-    console.log(chalk.yellow('⚠️  Different engines detected - using generic merge'));
-    await mergeGeneric(sourceContainer, targetContainer);
-  } else {
-    // Same engine - use engine-specific merge
-    switch (sourceInstance.engine) {
-      case 'postgresql':
-        await mergePostgreSQL(sourceContainer, targetContainer, sourceInstance.environment, targetInstance.environment);
-        break;
-      case 'mariadb':
-        await mergeMariaDB(sourceContainer, targetContainer, sourceInstance.environment, targetInstance.environment);
-        break;
-      case 'redis':
-        await mergeRedis(sourceContainer, targetContainer);
-        break;
-      default:
-        await mergeGeneric(sourceContainer, targetContainer);
-    }
+
+  switch (sourceInstance.engine) {
+    case 'postgresql':
+      await mergePostgreSQL(sourceContainer, targetContainer, sourceInstance.environment, targetInstance.environment);
+      break;
+    case 'mariadb':
+      await mergeMariaDB(sourceContainer, targetContainer, sourceInstance.environment, targetInstance.environment);
+      break;
+    case 'redis':
+      await mergeRedis(sourceContainer, targetContainer);
+      break;
+    default:
+      // Unreachable: handleMerge validates the engine before calling here.
+      throw new Error(`Merge is not supported for engine: ${sourceInstance.engine}`);
   }
-  
+
   console.log(chalk.green(`✅ Successfully merged ${sourceInstance.name} → ${targetInstance.name}`));
 }
 
@@ -229,62 +229,6 @@ async function migrateRedisKey(
   });
 }
 
-async function mergeGeneric(sourceContainer: string, targetContainer: string): Promise<void> {
-  console.log(chalk.yellow('🔄 Performing generic database merge...'));
-  
-  return new Promise((resolve, reject) => {
-    // Create backup of source data
-    const backupProcess = spawn('docker', [
-      'exec', sourceContainer,
-      'tar', '-czf', '/tmp/merge-backup.tar.gz', '/data'
-    ]);
-    
-    backupProcess.on('close', () => {
-      if (backupProcess.exitCode !== 0) {
-        reject(new Error('Failed to create merge backup'));
-        return;
-      }
-      
-      // Copy to target with merge strategy
-      const copyProcess = spawn('docker', [
-        'cp', `${sourceContainer}:/tmp/merge-backup.tar.gz`, '/tmp/hayai-merge.tar.gz'
-      ]);
-      
-      copyProcess.on('close', () => {
-        if (copyProcess.exitCode !== 0) {
-          reject(new Error('Failed to copy merge data'));
-          return;
-        }
-        
-        const restoreProcess = spawn('docker', [
-          'cp', '/tmp/hayai-merge.tar.gz', `${targetContainer}:/tmp/merge-backup.tar.gz`
-        ]);
-        
-        restoreProcess.on('close', () => {
-          if (restoreProcess.exitCode === 0) {
-            // Extract with keep-newer-files to avoid overwriting
-            const extractProcess = spawn('docker', [
-              'exec', targetContainer,
-              'tar', '-xzf', '/tmp/merge-backup.tar.gz', '-C', '/', '--keep-newer-files'
-            ]);
-            
-            extractProcess.on('close', () => resolve());
-            extractProcess.on('error', () => resolve()); // Continue on conflicts
-          } else {
-            reject(new Error('Failed to restore merge data'));
-          }
-        });
-        
-        restoreProcess.on('error', reject);
-      });
-      
-      copyProcess.on('error', reject);
-    });
-    
-    backupProcess.on('error', reject);
-  });
-}
-
 async function handleMerge(options: MergeOptions): Promise<void> {
   const dockerManager = getDockerManager();
   await dockerManager.initialize();
@@ -315,7 +259,21 @@ async function handleMerge(options: MergeOptions): Promise<void> {
     console.log(chalk.yellow(`💡 Start it with: ${chalk.cyan(`hayai start ${options.target}`)}`));
     process.exit(1);
   }
-  
+
+  // Merge stays inside one engine family and only where a real row/key-level
+  // merge exists. Cross-engine or unsupported pairs are refused — the previous
+  // file-level fallback silently corrupted the target.
+  if (sourceInstance.engine !== targetInstance.engine) {
+    console.error(chalk.red(`❌ Cannot merge across engines: ${sourceInstance.engine} → ${targetInstance.engine}`));
+    console.log(chalk.yellow('💡 Source and target must run the same engine'));
+    process.exit(1);
+  }
+  if (!MERGEABLE_ENGINES.has(sourceInstance.engine)) {
+    console.error(chalk.red(`❌ Merge is not supported for '${sourceInstance.engine}'`));
+    console.log(chalk.yellow(`💡 Supported engines: ${[...MERGEABLE_ENGINES].join(', ')}`));
+    process.exit(1);
+  }
+
   // Preview mode: explicit --preview, or any invocation without --execute.
   // --force never substitutes for --execute; it only skips the confirmation.
   if (options.preview || !options.execute) {
@@ -340,23 +298,48 @@ async function handleMerge(options: MergeOptions): Promise<void> {
       return;
     }
   }
-  
+
+  // Safety snapshots of both sides before an irreversible merge. A failed
+  // backup aborts the merge — the whole point is to not proceed unprotected.
+  if (options.backupBoth) {
+    const backupSpinner = ora('Backing up both databases...').start();
+    try {
+      const sourceBackup = await snapshotInstance(sourceInstance);
+      const targetBackup = await snapshotInstance(targetInstance);
+      backupSpinner.succeed('Safety snapshots created');
+      console.log(chalk.gray(`  source → ${sourceBackup}`));
+      console.log(chalk.gray(`  target → ${targetBackup}`));
+    } catch (error) {
+      backupSpinner.fail('Backup failed — aborting merge');
+      console.error(chalk.red('❌'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  }
+
   // Execute merge
   const spinner = ora('Merging databases...').start();
-  
+
   try {
     await mergeDatabases(sourceInstance, targetInstance);
-    
+
     spinner.succeed('Database merge completed successfully');
-    
+    await recordOperation({ operation: 'merge', source: options.source, target: options.target, success: true });
+
     console.log(chalk.green('\n✅ Merge operation completed!'));
     console.log(chalk.yellow(`💡 '${options.target}' now contains the combined data; '${options.source}' is unchanged`));
     console.log(chalk.yellow('💡 Commands:'));
     console.log(`  • ${chalk.cyan('hayai list')} - View all databases`);
     console.log(`  • ${chalk.cyan('hayai studio')} - Open admin dashboards`);
-    
+
   } catch (error) {
     spinner.fail('Merge operation failed');
+    await recordOperation({
+      operation: 'merge',
+      source: options.source,
+      target: options.target,
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
     console.error(chalk.red('\n❌ Merge failed:'), error instanceof Error ? error.message : error);
     process.exit(1);
   }
@@ -389,9 +372,12 @@ ${chalk.bold('How Merge Works:')}
   • The source database is left unchanged
   • Conflicts are resolved in favor of the source when possible
 
-${chalk.bold('Supported Engines:')}
-  • PostgreSQL, MariaDB: SQL-level merging
-  • Redis: Key-level merging with REPLACE
-  • Others: Generic file-based merging
+${chalk.bold('Supported Engines (same engine on both sides):')}
+  • PostgreSQL, MariaDB: SQL-level merging (data-only)
+  • Redis: key-level merging with MIGRATE … COPY REPLACE
+
+${chalk.bold('Unsupported:')}
+  • Cross-engine pairs and any other engine are refused — there is no safe
+    generic merge. Use ${chalk.cyan('hayai snapshot')} / ${chalk.cyan('hayai restore')} and the engine's tooling.
 `)
   .action(handleMerge); 
