@@ -36,14 +36,13 @@ export interface AuditLog {
 
 export class SecurityManager {
   private static instance: SecurityManager;
-  private readonly encryptionKey: string;
+  private encryptionKey?: string;
   private readonly credentialsPath: string;
   private readonly auditLogPath: string;
   private readonly securityPolicyPath: string;
   private operationCounts: Map<string, number> = new Map();
-  
+
   private constructor() {
-    this.encryptionKey = this.getOrCreateEncryptionKey();
     this.credentialsPath = path.join(process.cwd(), '.hayai', 'credentials.enc');
     this.auditLogPath = path.join(process.cwd(), '.hayai', 'audit.log');
     this.securityPolicyPath = path.join(process.cwd(), '.hayai', 'security.json');
@@ -54,6 +53,16 @@ export class SecurityManager {
       SecurityManager.instance = new SecurityManager();
     }
     return SecurityManager.instance;
+  }
+
+  // Created on first credential read/write rather than at construction, so
+  // audit-only callers never drop a .hayai/.key for a credential store they
+  // don't use.
+  private getKey(): string {
+    if (!this.encryptionKey) {
+      this.encryptionKey = this.getOrCreateEncryptionKey();
+    }
+    return this.encryptionKey;
   }
 
   /**
@@ -82,7 +91,7 @@ export class SecurityManager {
    */
   private encrypt(text: string): string {
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(this.encryptionKey, 'hex'), iv);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(this.getKey(), 'hex'), iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     return iv.toString('hex') + ':' + encrypted;
@@ -94,7 +103,7 @@ export class SecurityManager {
   private decrypt(text: string): string {
     const [ivHex, encryptedHex] = text.split(':');
     const iv = Buffer.from(ivHex, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(this.encryptionKey, 'hex'), iv);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(this.getKey(), 'hex'), iv);
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
@@ -299,6 +308,34 @@ export class SecurityManager {
   }
 
   /**
+   * Appends a data operation to the audit log when the active policy enables
+   * it. Commands call this in a finally block: auditing is a side record and
+   * must never change the outcome of the operation itself, so any write
+   * failure is swallowed inside auditLog().
+   */
+  public async recordOperation(entry: {
+    operation: string;
+    source: string;
+    target?: string;
+    success: boolean;
+    error?: string;
+  }): Promise<void> {
+    const policy = await this.getSecurityPolicy();
+    if (!policy.auditOperations) {
+      return;
+    }
+    await this.auditLog({
+      timestamp: new Date().toISOString(),
+      operation: entry.operation,
+      source: entry.source,
+      target: entry.target ?? '',
+      user: 'local',
+      success: entry.success,
+      error: entry.error
+    });
+  }
+
+  /**
    * Gets security policy
    */
   public async getSecurityPolicy(): Promise<SecurityPolicy> {
@@ -306,18 +343,17 @@ export class SecurityManager {
       const policyData = await readFile(this.securityPolicyPath, 'utf8');
       return JSON.parse(policyData);
     } catch {
-      // Return default policy
-      const defaultPolicy: SecurityPolicy = {
-        requireAuthentication: false, // Start permissive for local development
+      // No policy on disk: fall back to the permissive local-dev default
+      // without persisting it. Reading a policy must not create one — only
+      // `security --init` writes the file.
+      return {
+        requireAuthentication: false,
         allowCrossEngineOperations: true,
         enableNetworkIsolation: false,
         auditOperations: true,
         maxOperationsPerHour: 50,
         allowedOperations: ['clone', 'merge', 'migrate', 'backup', 'restore']
       };
-      
-      await this.saveSecurityPolicy(defaultPolicy);
-      return defaultPolicy;
     }
   }
 
@@ -476,4 +512,10 @@ export class SecurityManager {
 
 export const getSecurityManager = (): SecurityManager => {
   return SecurityManager.getInstance();
-}; 
+};
+
+// Thin entry point for commands that only need to record an operation, so they
+// don't reach into the manager singleton directly.
+export const recordOperation = (
+  entry: { operation: string; source: string; target?: string; success: boolean; error?: string }
+): Promise<void> => SecurityManager.getInstance().recordOperation(entry); 

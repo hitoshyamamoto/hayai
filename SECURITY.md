@@ -66,27 +66,29 @@ The `security` command provides **standalone utilities**:
   (`.hayai/security.json`).
 - `--audit` — shows the audit log at `.hayai/audit.log`.
 
+### What is wired
+
+- **Audit logging.** `clone`, `merge`, `snapshot`, `restore`, and `remove`
+  append an entry to `.hayai/audit.log` when `auditOperations` is enabled
+  (the default). `hayai security --audit` shows them. This is a local activity
+  record, not an access control.
+
 ### Honest limitations (important)
 
-The following are **not yet enforced**, even though the configuration for
-them exists:
+The following configuration exists but is **not yet enforced**:
 
-- **The security policy is not consulted by `clone`, `merge`, or any other
-  data operation.** Setting `allowedOperations` or rate limits in the policy
-  file currently has no effect on those commands.
-- **Operations do not write to the audit log.** `hayai security --audit`
-  will show entries only if future versions wire operations into it.
-- **Rate limiting is per-process.** A CLI invocation lives for seconds, so
-  the configured operations-per-hour limit cannot constrain anything across
+- **Policy gating is not applied.** `allowedOperations` does not restrict which
+  commands run, and `allowCrossEngineOperations` is not consulted.
+- **Rate limiting is per-process.** A CLI invocation lives for seconds, so the
+  configured operations-per-hour limit cannot constrain anything across
   invocations.
 - **Network isolation helpers exist in the codebase but are unused** by the
   commands.
 - The stored credentials in `.hayai/credentials.enc` are **not used by the
   data commands**, which read credentials from each instance's environment.
 
-Wiring the policy, audit log, and credential store into the actual
-operations is tracked as roadmap work. Until then, configure them only if
-you want the files in place for the future — they do not protect anything
+Wiring the remaining policy controls and the credential store into the
+operations is tracked as roadmap work. Audit logging is the part that is live
 today.
 
 ## Hardening recommendations
