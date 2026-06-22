@@ -155,6 +155,8 @@ export class DatabaseTemplates {
 
     this.addTemplate('tikv', {
       name: 'TiKV',
+      // Needs a PD (placement driver); a lone tikv container forms no cluster.
+      experimental: true,
       engine: {
         name: 'tikv',
         type: 'keyvalue',
@@ -229,6 +231,9 @@ export class DatabaseTemplates {
 
     this.addTemplate('milvus', {
       name: 'Milvus',
+      // Standalone Milvus still needs object storage; a single container is
+      // not a dependable deployment.
+      experimental: true,
       engine: {
         name: 'milvus',
         type: 'vector',
@@ -277,6 +282,9 @@ export class DatabaseTemplates {
 
     this.addTemplate('nebula', {
       name: 'NebulaGraph',
+      // Needs metad + storaged + graphd; a single graphd container is not a
+      // working cluster.
+      experimental: true,
       engine: {
         name: 'nebula',
         type: 'graph',

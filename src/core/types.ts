@@ -90,6 +90,10 @@ export interface DatabaseTemplate {
     enabled: boolean;
     path?: string;
   };
+  // True for engines that need a multi-node cluster (a placement driver,
+  // metad/storaged, object storage) and won't be fully functional running as
+  // the single container hayai starts. Surfaced as a warning on init.
+  experimental?: boolean;
 }
 
 export interface PortAllocation {

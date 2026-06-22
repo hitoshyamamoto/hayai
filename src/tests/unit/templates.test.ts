@@ -54,4 +54,13 @@ describe('DatabaseTemplates - Basic Validation', () => {
     expect(wideColumnEngines).toHaveLength(1);
     expect(wideColumnEngines).toContain('cassandra');
   });
+
+  it('marks the cluster-only engines as experimental and nothing else', () => {
+    const experimental = [...DatabaseTemplates.getAllTemplates().entries()]
+      .filter(([, template]) => template.experimental)
+      .map(([key]) => key)
+      .sort();
+
+    expect(experimental).toEqual(['milvus', 'nebula', 'tikv']);
+  });
 });
