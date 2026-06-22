@@ -124,6 +124,14 @@ export const initCommand = new Command('init')
         throw new Error(`Database engine '${config.engine}' is not supported`);
       }
 
+      if (template.experimental) {
+        console.log(
+          chalk.yellow(
+            `\n⚠️  ${template.name} is experimental: hayai runs it as a single container, but it needs a multi-node cluster to work properly. Expect it to be partially or non-functional.`,
+          ),
+        );
+      }
+
       // Create the database instance
       const createSpinner = ora(`Creating ${template.name} instance '${config.name}'...`).start();
 
