@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-22
+
 ### Added
 - `hayai restore <snapshot>` closes the snapshot loop: replays SQL dumps
   (PostgreSQL, TimescaleDB, MariaDB), swaps the RDB for Redis, and extracts the
@@ -66,5 +68,6 @@ to make every command do what it claims — and say so plainly when it does not.
   client-SDK / dashboard / `.env` promises.
 - `studio` only advertises dashboards that actually exist.
 
-[Unreleased]: https://github.com/hitoshyamamoto/hayai/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/hitoshyamamoto/hayai/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/hitoshyamamoto/hayai/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/hitoshyamamoto/hayai/releases/tag/v0.7.1
