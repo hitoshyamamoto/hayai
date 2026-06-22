@@ -14,6 +14,7 @@ import { logsCommand } from './commands/logs.js';
 import { studioCommand } from './commands/studio.js';
 import { snapshotCommand } from './commands/snapshot.js';
 import { restoreCommand } from './commands/restore.js';
+import { connectCommand } from './commands/connect.js';
 import { exportCommand } from './commands/export.js';
 import { syncCommand } from './commands/sync.js';
 import { cloneCommand } from './commands/clone.js';
@@ -112,6 +113,7 @@ ${chalk.bold('COMMANDS')}
   ${chalk.cyan('start')} [name]  Start database instances
   ${chalk.cyan('stop')} [name]   Stop database instances
   ${chalk.cyan('list')}          List all database instances
+  ${chalk.cyan('connect')} <name> Print connection details for an instance
   ${chalk.cyan('remove')} <name> Remove a database instance
   ${chalk.cyan('logs')} <name>   View logs from a database instance
   ${chalk.cyan('studio')} [name] Open admin dashboards
@@ -137,13 +139,16 @@ ${chalk.bold('OPTIONS')}
   })
   .hook('preAction', async () => {
     if (!program.opts().quiet) {
-      console.log(banner);
+      // Decorative banner goes to stderr so data commands (connect --uri,
+      // list --format json) keep stdout clean and pipeable.
+      console.error(banner);
     }
   });
 
 // Register commands
 program.addCommand(initCommand);
 program.addCommand(listCommand);
+program.addCommand(connectCommand);
 program.addCommand(startCommand);
 program.addCommand(stopCommand);
 program.addCommand(removeCommand);
@@ -177,6 +182,7 @@ ${chalk.bold('COMMANDS')}
   ${chalk.cyan('start')} [name]  Start database instances
   ${chalk.cyan('stop')} [name]   Stop database instances
   ${chalk.cyan('list')}          List all database instances
+  ${chalk.cyan('connect')} <name> Print connection details for an instance
   ${chalk.cyan('remove')} <name> Remove a database instance
   ${chalk.cyan('logs')} <name>   View logs from a database instance
   ${chalk.cyan('studio')} [name] Open admin dashboards
