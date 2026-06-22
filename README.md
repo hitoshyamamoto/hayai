@@ -2,9 +2,11 @@
   <img src="assets/logo_hayai.png" alt="Hayai Logo" width="200"/>
   <h1>Hayai ⚡</h1>
   <p><em>Instantly create and manage local databases with one command</em></p>
+  <p><strong>Status:</strong> beta (0.x) — usable today; APIs and flags may still change between minor versions.</p>
   
   ![GitHub Actions](https://github.com/hitoshyamamoto/hayai/workflows/CI/badge.svg)
   ![npm version](https://img.shields.io/npm/v/hayai-db.svg)
+  ![Status](https://img.shields.io/badge/status-beta%20(0.x)-orange.svg)
   ![License](https://img.shields.io/badge/license-MIT-blue.svg)
   ![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
   
