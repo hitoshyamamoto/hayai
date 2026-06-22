@@ -12,9 +12,9 @@ export const listCommand = new Command('list')
     try {
       const dockerManager = getDockerManager();
       await dockerManager.initialize();
-      
+
       let instances = dockerManager.getAllInstances();
-      
+
       if (options.running) {
         instances = dockerManager.getRunningInstances();
       } else if (options.stopped) {
@@ -34,39 +34,48 @@ export const listCommand = new Command('list')
 
       // Table format
       console.log(chalk.bold('\n📊 Database Instances:\n'));
-      
+
       const statusIcon = (status: string) => {
         switch (status) {
-          case 'running': return chalk.green('●');
-          case 'stopped': return chalk.red('●');
-          case 'embedded': return chalk.cyan('●');
-          case 'error': return chalk.red('⚠');
-          default: return chalk.gray('○');
+          case 'running':
+            return chalk.green('●');
+          case 'stopped':
+            return chalk.red('●');
+          case 'embedded':
+            return chalk.cyan('●');
+          case 'error':
+            return chalk.red('⚠');
+          default:
+            return chalk.gray('○');
         }
       };
 
       const statusColor = (status: string) =>
-        status === 'running' ? chalk.green(status)
-          : status === 'embedded' ? chalk.cyan('embedded (file-based)')
-          : chalk.red(status);
+        status === 'running'
+          ? chalk.green(status)
+          : status === 'embedded'
+            ? chalk.cyan('embedded (file-based)')
+            : chalk.red(status);
 
       instances.forEach((instance, index) => {
         const template = getTemplate(instance.engine);
         const engineName = template?.name || instance.engine;
-        
+
         console.log(`${index + 1}. ${chalk.bold(instance.name)} ${statusIcon(instance.status)}`);
         console.log(`   Engine: ${chalk.cyan(engineName)}`);
         console.log(`   Status: ${statusColor(instance.status)}`);
         console.log(`   Port: ${instance.port > 0 ? chalk.cyan(instance.port) : chalk.gray('—')}`);
         console.log(`   URI: ${chalk.gray(instance.connection_uri)}`);
-        console.log(`   Created: ${chalk.gray(new Date(instance.created_at).toLocaleDateString())}`);
+        console.log(
+          `   Created: ${chalk.gray(new Date(instance.created_at).toLocaleDateString())}`,
+        );
         console.log('');
       });
 
-      const running = instances.filter(i => i.status === 'running').length;
-      const stopped = instances.filter(i => i.status === 'stopped').length;
-      const embedded = instances.filter(i => i.status === 'embedded').length;
-      const error = instances.filter(i => i.status === 'error').length;
+      const running = instances.filter((i) => i.status === 'running').length;
+      const stopped = instances.filter((i) => i.status === 'stopped').length;
+      const embedded = instances.filter((i) => i.status === 'embedded').length;
+      const error = instances.filter((i) => i.status === 'error').length;
 
       console.log(chalk.bold('Summary:'));
       console.log(`  Total: ${chalk.cyan(instances.length)}`);
@@ -84,9 +93,11 @@ export const listCommand = new Command('list')
       console.log('  • hayai stop <name>   - Stop a database');
       console.log('  • hayai remove <name> - Remove a database');
       console.log('  • hayai studio        - Open admin dashboards');
-
     } catch (error) {
-      console.error(chalk.red('\n❌ Failed to list databases:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to list databases:'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
-  }); 
+  });

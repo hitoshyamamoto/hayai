@@ -70,7 +70,7 @@ export class SecurityManager {
    */
   private getOrCreateEncryptionKey(): string {
     const keyPath = path.join(process.cwd(), '.hayai', '.key');
-    
+
     try {
       return readFileSync(keyPath, 'utf8');
     } catch {
@@ -115,24 +115,27 @@ export class SecurityManager {
   public generateSecurePassword(length: number = 16): string {
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
     let password = '';
-    
+
     for (let i = 0; i < length; i++) {
       const randomIndex = crypto.randomInt(0, charset.length);
       password += charset[randomIndex];
     }
-    
+
     return password;
   }
 
   /**
    * Stores credentials securely
    */
-  public async storeCredentials(instanceName: string, credentials: Omit<SecurityCredentials, 'encrypted' | 'createdAt'>): Promise<void> {
+  public async storeCredentials(
+    instanceName: string,
+    credentials: Omit<SecurityCredentials, 'encrypted' | 'createdAt'>,
+  ): Promise<void> {
     try {
       await mkdir(path.dirname(this.credentialsPath), { recursive: true });
-      
+
       let existingCredentials: Record<string, SecurityCredentials> = {};
-      
+
       try {
         const encryptedData = await readFile(this.credentialsPath, 'utf8');
         const decryptedData = this.decrypt(encryptedData);
@@ -140,20 +143,19 @@ export class SecurityManager {
       } catch {
         // File doesn't exist or is corrupted - start fresh
       }
-      
+
       existingCredentials[instanceName] = {
         ...credentials,
         password: this.encrypt(credentials.password),
         encrypted: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
-      
+
       const encryptedCredentials = this.encrypt(JSON.stringify(existingCredentials));
       await writeFile(this.credentialsPath, encryptedCredentials);
-      
+
       // Set restrictive permissions
       await chmod(this.credentialsPath, 0o600);
-      
     } catch (error) {
       throw new Error(`Failed to store credentials securely: ${error}`);
     }
@@ -167,18 +169,18 @@ export class SecurityManager {
       const encryptedData = await readFile(this.credentialsPath, 'utf8');
       const decryptedData = this.decrypt(encryptedData);
       const credentials = JSON.parse(decryptedData);
-      
+
       if (credentials[instanceName]) {
         const creds = credentials[instanceName];
         creds.password = this.decrypt(creds.password);
         creds.lastUsed = new Date().toISOString();
-        
+
         // Update last used timestamp
         await this.storeCredentials(instanceName, creds);
-        
+
         return creds;
       }
-      
+
       return null;
     } catch {
       return null;
@@ -189,41 +191,49 @@ export class SecurityManager {
    * Validates if operation is allowed
    */
   public async validateOperation(
-    operation: string, 
-    sourceInstance: string, 
+    operation: string,
+    sourceInstance: string,
     targetInstance?: string,
-    user: string = 'local'
+    user: string = 'local',
   ): Promise<{ allowed: boolean; reason?: string }> {
-    
     const policy = await this.getSecurityPolicy();
-    
+
     // Check if operation is allowed
     if (!policy.allowedOperations.includes(operation)) {
-      return { allowed: false, reason: `Operation '${operation}' is not permitted by security policy` };
+      return {
+        allowed: false,
+        reason: `Operation '${operation}' is not permitted by security policy`,
+      };
     }
-    
+
     // Check rate limiting
     const operationKey = `${user}:${operation}`;
     const currentCount = this.operationCounts.get(operationKey) || 0;
-    
+
     if (currentCount >= policy.maxOperationsPerHour) {
-      return { allowed: false, reason: `Rate limit exceeded: ${policy.maxOperationsPerHour} operations per hour` };
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${policy.maxOperationsPerHour} operations per hour`,
+      };
     }
-    
+
     // Check cross-engine operations
     if (targetInstance && !policy.allowCrossEngineOperations) {
       // This would need engine comparison logic
       // For now, assume different engines if different names
     }
-    
+
     // Increment operation count
     this.operationCounts.set(operationKey, currentCount + 1);
-    
+
     // Reset counts every hour
-    setTimeout(() => {
-      this.operationCounts.delete(operationKey);
-    }, 60 * 60 * 1000);
-    
+    setTimeout(
+      () => {
+        this.operationCounts.delete(operationKey);
+      },
+      60 * 60 * 1000,
+    );
+
     return { allowed: true };
   }
 
@@ -232,16 +242,19 @@ export class SecurityManager {
    */
   public async createNetworkIsolation(): Promise<string> {
     const networkName = `hayai-op-${crypto.randomUUID().substring(0, 8)}`;
-    
+
     return new Promise((resolve, reject) => {
       const createNetwork = spawn('docker', [
-        'network', 'create',
-        '--driver', 'bridge',
+        'network',
+        'create',
+        '--driver',
+        'bridge',
         '--internal', // Isolates from external networks
-        '--opt', 'com.docker.network.bridge.enable_icc=true', // Enable inter-container communication
-        networkName
+        '--opt',
+        'com.docker.network.bridge.enable_icc=true', // Enable inter-container communication
+        networkName,
       ]);
-      
+
       createNetwork.on('close', (code) => {
         if (code === 0) {
           console.log(chalk.green(`🔒 Created isolated network: ${networkName}`));
@@ -250,7 +263,7 @@ export class SecurityManager {
           reject(new Error('Failed to create isolated network'));
         }
       });
-      
+
       createNetwork.on('error', reject);
     });
   }
@@ -260,14 +273,12 @@ export class SecurityManager {
    */
   public async connectToNetwork(networkName: string, containerName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const connect = spawn('docker', [
-        'network', 'connect', networkName, containerName
-      ]);
-      
+      const connect = spawn('docker', ['network', 'connect', networkName, containerName]);
+
       connect.on('close', (code) => {
         code === 0 ? resolve() : reject(new Error(`Failed to connect ${containerName} to network`));
       });
-      
+
       connect.on('error', reject);
     });
   }
@@ -277,15 +288,13 @@ export class SecurityManager {
    */
   public async cleanupNetwork(networkName: string): Promise<void> {
     return new Promise((resolve) => {
-      const cleanup = spawn('docker', [
-        'network', 'rm', networkName
-      ]);
-      
+      const cleanup = spawn('docker', ['network', 'rm', networkName]);
+
       cleanup.on('close', () => {
         console.log(chalk.green(`🧹 Cleaned up network: ${networkName}`));
         resolve();
       });
-      
+
       cleanup.on('error', () => resolve()); // Don't fail on cleanup errors
     });
   }
@@ -296,12 +305,15 @@ export class SecurityManager {
   public async auditLog(log: AuditLog): Promise<void> {
     try {
       await mkdir(path.dirname(this.auditLogPath), { recursive: true });
-      
+
       const logEntry = JSON.stringify(log) + '\n';
       await writeFile(this.auditLogPath, logEntry, { flag: 'a' });
-      
-      console.log(chalk.gray(`📋 Audit: ${log.operation} ${log.source}${log.target ? ` → ${log.target}` : ''} ${log.success ? '✅' : '❌'}`));
-      
+
+      console.log(
+        chalk.gray(
+          `📋 Audit: ${log.operation} ${log.source}${log.target ? ` → ${log.target}` : ''} ${log.success ? '✅' : '❌'}`,
+        ),
+      );
     } catch (error) {
       console.warn(chalk.yellow(`⚠️  Failed to write audit log: ${error}`));
     }
@@ -331,7 +343,7 @@ export class SecurityManager {
       target: entry.target ?? '',
       user: 'local',
       success: entry.success,
-      error: entry.error
+      error: entry.error,
     });
   }
 
@@ -352,7 +364,7 @@ export class SecurityManager {
         enableNetworkIsolation: false,
         auditOperations: true,
         maxOperationsPerHour: 50,
-        allowedOperations: ['clone', 'merge', 'migrate', 'backup', 'restore']
+        allowedOperations: ['clone', 'merge', 'migrate', 'backup', 'restore'],
       };
     }
   }
@@ -372,17 +384,20 @@ export class SecurityManager {
   /**
    * Creates secure credentials for new instance
    */
-  public async createSecureCredentials(instanceName: string, engine: string): Promise<SecurityCredentials> {
+  public async createSecureCredentials(
+    instanceName: string,
+    engine: string,
+  ): Promise<SecurityCredentials> {
     const credentials: SecurityCredentials = {
       username: engine === 'redis' ? '' : 'admin',
       password: this.generateSecurePassword(),
       database: engine === 'postgresql' || engine === 'mariadb' ? 'database' : undefined,
       encrypted: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
-    
+
     await this.storeCredentials(instanceName, credentials);
-    
+
     return credentials;
   }
 
@@ -392,30 +407,29 @@ export class SecurityManager {
   public async executeSecureCommand(
     command: string[],
     instanceName: string,
-    operation: string
+    operation: string,
   ): Promise<string> {
     let success = false;
     let error: string | undefined;
-    
+
     try {
       // Validate operation
       const validation = await this.validateOperation(operation, instanceName);
       if (!validation.allowed) {
         throw new Error(validation.reason);
       }
-      
+
       // Get credentials
       const credentials = await this.getCredentials(instanceName);
       if (!credentials) {
         throw new Error(`No credentials found for instance: ${instanceName}`);
       }
-      
+
       // Execute command with credentials injected securely
       const result = await this.runSecureCommand(command, credentials);
       success = true;
-      
+
       return result;
-      
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       throw err;
@@ -428,7 +442,7 @@ export class SecurityManager {
         target: '',
         user: 'local',
         success,
-        error
+        error,
       });
     }
   }
@@ -436,31 +450,34 @@ export class SecurityManager {
   /**
    * Executes command with secure environment variables
    */
-  private async runSecureCommand(command: string[], credentials: SecurityCredentials): Promise<string> {
+  private async runSecureCommand(
+    command: string[],
+    credentials: SecurityCredentials,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const env = {
         ...process.env,
         PGPASSWORD: credentials.password,
         MYSQL_PWD: credentials.password,
-        REDIS_PASSWORD: credentials.password
+        REDIS_PASSWORD: credentials.password,
       };
-      
+
       const child = spawn(command[0], command.slice(1), {
         env,
-        stdio: ['inherit', 'pipe', 'pipe']
+        stdio: ['inherit', 'pipe', 'pipe'],
       });
-      
+
       let stdout = '';
       let stderr = '';
-      
+
       child.stdout.on('data', (data) => {
         stdout += data.toString();
       });
-      
+
       child.stderr.on('data', (data) => {
         stderr += data.toString();
       });
-      
+
       child.on('close', (code) => {
         if (code === 0) {
           resolve(stdout);
@@ -468,7 +485,7 @@ export class SecurityManager {
           reject(new Error(`Command failed: ${stderr}`));
         }
       });
-      
+
       child.on('error', reject);
     });
   }
@@ -480,29 +497,47 @@ export class SecurityManager {
     try {
       const credentials = await this.getCredentials(instanceName);
       if (!credentials) return false;
-      
+
       switch (engine) {
         case 'postgresql':
           // Check if database is accessible and has tables
-          await this.runSecureCommand([
-            'docker', 'exec', `${instanceName}-db`,
-            'psql', '-U', credentials.username, '-d', credentials.database || 'database',
-            '-c', 'SELECT COUNT(*) FROM information_schema.tables;'
-          ], credentials);
+          await this.runSecureCommand(
+            [
+              'docker',
+              'exec',
+              `${instanceName}-db`,
+              'psql',
+              '-U',
+              credentials.username,
+              '-d',
+              credentials.database || 'database',
+              '-c',
+              'SELECT COUNT(*) FROM information_schema.tables;',
+            ],
+            credentials,
+          );
           break;
-          
+
         case 'redis':
           // Check if Redis is responsive
-          await this.runSecureCommand([
-            'docker', 'exec', `${instanceName}-db`,
-            'redis-cli', '-a', credentials.password, 'ping'
-          ], credentials);
+          await this.runSecureCommand(
+            [
+              'docker',
+              'exec',
+              `${instanceName}-db`,
+              'redis-cli',
+              '-a',
+              credentials.password,
+              'ping',
+            ],
+            credentials,
+          );
           break;
-          
+
         default:
           console.log(chalk.yellow(`⚠️  Data integrity check not implemented for ${engine}`));
       }
-      
+
       return true;
     } catch {
       return false;
@@ -516,6 +551,10 @@ export const getSecurityManager = (): SecurityManager => {
 
 // Thin entry point for commands that only need to record an operation, so they
 // don't reach into the manager singleton directly.
-export const recordOperation = (
-  entry: { operation: string; source: string; target?: string; success: boolean; error?: string }
-): Promise<void> => SecurityManager.getInstance().recordOperation(entry); 
+export const recordOperation = (entry: {
+  operation: string;
+  source: string;
+  target?: string;
+  success: boolean;
+  error?: string;
+}): Promise<void> => SecurityManager.getInstance().recordOperation(entry);

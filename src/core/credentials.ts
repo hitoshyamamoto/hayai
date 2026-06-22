@@ -11,7 +11,7 @@ export interface PostgresExecCredentials {
 }
 
 export function getPostgresExecCredentials(
-  environment: Record<string, string> = {}
+  environment: Record<string, string> = {},
 ): PostgresExecCredentials {
   const user = environment.POSTGRES_USER || 'postgres';
   return {

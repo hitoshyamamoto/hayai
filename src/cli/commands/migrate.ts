@@ -14,45 +14,48 @@ interface MigrateOptions extends CLIOptions {
 // implemented yet — see showManualMigrationGuidance below.
 const MIGRATION_COMPATIBILITY: Record<string, string[]> = {
   // Time Series Migrations
-  'influxdb2': ['influxdb3', 'victoriametrics', 'questdb'],
-  'influxdb3': ['influxdb2', 'victoriametrics', 'questdb'],
-  'timescaledb': ['influxdb2', 'influxdb3', 'questdb', 'victoriametrics'],
-  'questdb': ['influxdb2', 'influxdb3', 'timescaledb', 'victoriametrics'],
-  'victoriametrics': ['influxdb2', 'influxdb3', 'questdb'],
-  'horaedb': ['influxdb2', 'influxdb3', 'questdb'],
+  influxdb2: ['influxdb3', 'victoriametrics', 'questdb'],
+  influxdb3: ['influxdb2', 'victoriametrics', 'questdb'],
+  timescaledb: ['influxdb2', 'influxdb3', 'questdb', 'victoriametrics'],
+  questdb: ['influxdb2', 'influxdb3', 'timescaledb', 'victoriametrics'],
+  victoriametrics: ['influxdb2', 'influxdb3', 'questdb'],
+  horaedb: ['influxdb2', 'influxdb3', 'questdb'],
 
   // SQL Database Migrations
-  'postgresql': ['timescaledb'],
-  'mariadb': ['postgresql'],
+  postgresql: ['timescaledb'],
+  mariadb: ['postgresql'],
 
   // Vector Database Migrations
-  'qdrant': ['milvus', 'weaviate'],
-  'milvus': ['qdrant', 'weaviate'],
-  'weaviate': ['qdrant', 'milvus'],
+  qdrant: ['milvus', 'weaviate'],
+  milvus: ['qdrant', 'weaviate'],
+  weaviate: ['qdrant', 'milvus'],
 
   // Search Engine Migrations
-  'meilisearch': ['typesense'],
-  'typesense': ['meilisearch'],
+  meilisearch: ['typesense'],
+  typesense: ['meilisearch'],
 
   // Graph Database Migrations
-  'arangodb': ['nebula'],
-  'nebula': ['arangodb'],
+  arangodb: ['nebula'],
+  nebula: ['arangodb'],
 
   // Key-Value Migrations
-  'redis': ['leveldb', 'lmdb', 'tikv'],
-  'leveldb': ['lmdb', 'redis', 'tikv'],
-  'lmdb': ['leveldb', 'redis', 'tikv'],
-  'tikv': ['redis', 'leveldb', 'lmdb'],
+  redis: ['leveldb', 'lmdb', 'tikv'],
+  leveldb: ['lmdb', 'redis', 'tikv'],
+  lmdb: ['leveldb', 'redis', 'tikv'],
+  tikv: ['redis', 'leveldb', 'lmdb'],
 
   // Wide Column Migrations
-  'cassandra': ['arangodb'],
+  cassandra: ['arangodb'],
 };
 
-function validateMigrationCompatibility(sourceEngine: string, targetEngine: string): { compatible: boolean; reason?: string } {
+function validateMigrationCompatibility(
+  sourceEngine: string,
+  targetEngine: string,
+): { compatible: boolean; reason?: string } {
   if (sourceEngine === targetEngine) {
     return {
       compatible: false,
-      reason: 'Source and target engines are the same. Use clone command instead.'
+      reason: 'Source and target engines are the same. Use clone command instead.',
     };
   }
 
@@ -60,14 +63,17 @@ function validateMigrationCompatibility(sourceEngine: string, targetEngine: stri
   if (!compatibleTargets || !compatibleTargets.includes(targetEngine)) {
     return {
       compatible: false,
-      reason: `Migration from '${sourceEngine}' to '${targetEngine}' is not supported`
+      reason: `Migration from '${sourceEngine}' to '${targetEngine}' is not supported`,
     };
   }
 
   return { compatible: true };
 }
 
-function getMigrationComplexity(sourceEngine: string, targetEngine: string): 'low' | 'medium' | 'high' {
+function getMigrationComplexity(
+  sourceEngine: string,
+  targetEngine: string,
+): 'low' | 'medium' | 'high' {
   const key = `${sourceEngine}->${targetEngine}`;
 
   const complexityMap: Record<string, 'low' | 'medium' | 'high'> = {
@@ -106,50 +112,50 @@ function showMigrationWarnings(sourceEngine: string, targetEngine: string): void
       'TimescaleDB hypertables will be converted to InfluxDB measurements',
       'SQL relationships and constraints will be lost',
       'Time aggregation functions may need reconfiguration',
-      'Custom PostgreSQL functions will not be migrated'
+      'Custom PostgreSQL functions will not be migrated',
     ],
     'questdb->influxdb2': [
       'QuestDB table structures will be flattened',
       'SQL JOINs and complex queries will need rewriting',
       'Designated timestamp columns will be mapped to InfluxDB time field',
-      'QuestDB-specific optimizations will be lost'
+      'QuestDB-specific optimizations will be lost',
     ],
     'postgresql->timescaledb': [
       'Tables will need to be converted to hypertables manually',
       'Time-series specific optimizations must be configured',
-      'Indexes may need recreation for time-series queries'
+      'Indexes may need recreation for time-series queries',
     ],
     'qdrant->milvus': [
       'Collection schemas may need adjustment',
       'Payload structures might change',
       'Vector indexing parameters will be reset',
-      'Distance metrics compatibility should be verified'
+      'Distance metrics compatibility should be verified',
     ],
     'milvus->qdrant': [
       'Entity schemas will be converted to Qdrant points',
       'Index types may not have direct equivalents',
       'Collection partitioning will be lost',
-      'Metadata structures will change'
+      'Metadata structures will change',
     ],
     'redis->leveldb': [
       'Redis data structures (hashes, sets, lists) will be serialized',
       'TTL/expiration data will be lost',
       'Redis-specific commands will not be available',
-      'Performance characteristics will differ significantly'
+      'Performance characteristics will differ significantly',
     ],
     'cassandra->arangodb': [
       'Wide column model will be transformed to document model',
       'CQL queries will need complete rewriting to AQL',
       'Consistency models are fundamentally different',
-      'Partitioning strategies will not transfer'
-    ]
+      'Partitioning strategies will not transfer',
+    ],
   };
 
   const key = `${sourceEngine}->${targetEngine}`;
   const specificWarnings = warnings[key];
 
   if (specificWarnings) {
-    specificWarnings.forEach(warning => {
+    specificWarnings.forEach((warning) => {
       console.log(chalk.gray(`  • ${warning}`));
     });
   } else {
@@ -163,60 +169,38 @@ function showManualMigrationGuidance(sourceEngine: string, targetEngine: string)
   console.log(chalk.yellow('\n💡 How to migrate manually:'));
 
   const guidance: Record<string, string[]> = {
-    'influxdb2': [
+    influxdb2: [
       'Export: docker exec <source>-db influx backup /tmp/backup',
-      'Or stream line protocol with influx query and write it to the target'
+      'Or stream line protocol with influx query and write it to the target',
     ],
-    'influxdb3': [
-      'Export: use the influxdb3 CLI or the /api/v3 query endpoints'
-    ],
-    'timescaledb': [
+    influxdb3: ['Export: use the influxdb3 CLI or the /api/v3 query endpoints'],
+    timescaledb: [
       'Export: docker exec <source>-db pg_dump -U <user> -d <db> > dump.sql',
-      'Transform rows to the target format before importing'
+      'Transform rows to the target format before importing',
     ],
-    'postgresql': [
+    postgresql: [
       'Export: docker exec <source>-db pg_dump -U <user> -d <db> > dump.sql',
-      'Import into TimescaleDB, then convert tables with create_hypertable()'
+      'Import into TimescaleDB, then convert tables with create_hypertable()',
     ],
-    'mariadb': [
+    mariadb: [
       'Export: docker exec <source>-db mysqldump -u root <db> > dump.sql',
-      'Convert syntax with pgloader for a MariaDB → PostgreSQL move'
+      'Convert syntax with pgloader for a MariaDB → PostgreSQL move',
     ],
-    'questdb': [
-      'Export: SELECT ... INTO OUTFILE or the /exp REST endpoint (CSV)'
-    ],
-    'victoriametrics': [
-      'Export: /api/v1/export (JSON lines) or vmctl for bulk moves'
-    ],
-    'qdrant': [
-      'Use the snapshots API: POST /collections/<name>/snapshots'
-    ],
-    'milvus': [
-      'Use the milvus-backup tool or collection export/import'
-    ],
-    'weaviate': [
-      'Use the backup API or cursor-based object export'
-    ],
-    'meilisearch': [
-      'Use the dumps API: POST /dumps, then import on the target'
-    ],
-    'typesense': [
-      'Export collections with GET /collections/<name>/documents/export'
-    ],
-    'arangodb': [
-      'Use arangodump + arangorestore, or arangoexport for graph data'
-    ],
-    'redis': [
-      'Use redis-cli --rdb to dump, or MIGRATE for live key transfer'
-    ],
-    'cassandra': [
-      'Use nodetool snapshot + sstableloader, or cqlsh COPY commands'
-    ],
+    questdb: ['Export: SELECT ... INTO OUTFILE or the /exp REST endpoint (CSV)'],
+    victoriametrics: ['Export: /api/v1/export (JSON lines) or vmctl for bulk moves'],
+    qdrant: ['Use the snapshots API: POST /collections/<name>/snapshots'],
+    milvus: ['Use the milvus-backup tool or collection export/import'],
+    weaviate: ['Use the backup API or cursor-based object export'],
+    meilisearch: ['Use the dumps API: POST /dumps, then import on the target'],
+    typesense: ['Export collections with GET /collections/<name>/documents/export'],
+    arangodb: ['Use arangodump + arangorestore, or arangoexport for graph data'],
+    redis: ['Use redis-cli --rdb to dump, or MIGRATE for live key transfer'],
+    cassandra: ['Use nodetool snapshot + sstableloader, or cqlsh COPY commands'],
   };
 
   const sourceSteps = guidance[sourceEngine];
   if (sourceSteps) {
-    sourceSteps.forEach(step => console.log(chalk.gray(`  • ${step}`)));
+    sourceSteps.forEach((step) => console.log(chalk.gray(`  • ${step}`)));
   } else {
     console.log(chalk.gray(`  • Check the ${sourceEngine} documentation for native export tools`));
   }
@@ -227,7 +211,9 @@ function showManualMigrationGuidance(sourceEngine: string, targetEngine: string)
 async function handleMigrate(options: MigrateOptions): Promise<void> {
   if (!options.from || !options.to || !options.targetEngine) {
     console.error(chalk.red('❌ --from, --to, and --target-engine are required'));
-    console.log(chalk.yellow('💡 Example: hayai migrate -f source-db -t target-db -e influxdb3 --dry-run'));
+    console.log(
+      chalk.yellow('💡 Example: hayai migrate -f source-db -t target-db -e influxdb3 --dry-run'),
+    );
     process.exit(1);
   }
 
@@ -243,13 +229,18 @@ async function handleMigrate(options: MigrateOptions): Promise<void> {
   }
 
   // Validate migration compatibility
-  const compatibilityResult = validateMigrationCompatibility(sourceInstance.engine, options.targetEngine);
+  const compatibilityResult = validateMigrationCompatibility(
+    sourceInstance.engine,
+    options.targetEngine,
+  );
   if (!compatibilityResult.compatible) {
     console.error(chalk.red(`❌ Migration not supported: ${compatibilityResult.reason}`));
     console.log(chalk.yellow('\n💡 Supported migration paths:'));
 
     Object.entries(MIGRATION_COMPATIBILITY).forEach(([source, targets]) => {
-      console.log(chalk.gray(`  ${chalk.cyan(source)} → ${targets.map(t => chalk.green(t)).join(', ')}`));
+      console.log(
+        chalk.gray(`  ${chalk.cyan(source)} → ${targets.map((t) => chalk.green(t)).join(', ')}`),
+      );
     });
 
     process.exit(1);
@@ -259,7 +250,11 @@ async function handleMigrate(options: MigrateOptions): Promise<void> {
   console.log(chalk.cyan('\n🔍 Migration Plan:'));
   console.log(chalk.gray(`Source: ${options.from} (${chalk.cyan(sourceInstance.engine)})`));
   console.log(chalk.gray(`Target: ${options.to} (${chalk.cyan(options.targetEngine)})`));
-  console.log(chalk.gray(`Complexity: ${chalk.magenta(getMigrationComplexity(sourceInstance.engine, options.targetEngine).toUpperCase())}`));
+  console.log(
+    chalk.gray(
+      `Complexity: ${chalk.magenta(getMigrationComplexity(sourceInstance.engine, options.targetEngine).toUpperCase())}`,
+    ),
+  );
 
   showMigrationWarnings(sourceInstance.engine, options.targetEngine);
 
@@ -270,7 +265,9 @@ async function handleMigrate(options: MigrateOptions): Promise<void> {
 
   // Automated execution is not implemented. Say so instead of pretending.
   console.error(chalk.red('\n❌ Automated migration execution is not implemented yet'));
-  console.log(chalk.gray('This command currently validates compatibility and plans the migration.'));
+  console.log(
+    chalk.gray('This command currently validates compatibility and plans the migration.'),
+  );
   showManualMigrationGuidance(sourceInstance.engine, options.targetEngine);
   process.exit(1);
 }
@@ -282,7 +279,9 @@ export const migrateCommand = new Command('migrate')
   .option('-e, --target-engine <engine>', 'Target database engine')
   .option('--dry-run', 'Show the migration plan')
   .option('--verbose', 'Enable verbose output')
-  .addHelpText('after', `
+  .addHelpText(
+    'after',
+    `
 ${chalk.bold('Status:')}
   ${chalk.yellow('⚠️  Automated execution is not implemented yet.')}
   This command validates compatibility, shows the plan and risks, and
@@ -310,5 +309,6 @@ ${chalk.bold('Migration Complexity:')}
   ${chalk.green('🟢 LOW:')}     Same family engines (influxdb2 → influxdb3)
   ${chalk.yellow('🟡 MEDIUM:')}  Similar purpose (qdrant → milvus)
   ${chalk.red('🔴 HIGH:')}     Different paradigms (timescaledb → influxdb2)
-`)
+`,
+  )
   .action(handleMigrate);

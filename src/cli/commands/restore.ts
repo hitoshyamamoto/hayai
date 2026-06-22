@@ -28,7 +28,7 @@ const RESTORABLE_ENGINES = new Set([
   'timescaledb',
   'mariadb',
   'redis',
-  ...EMBEDDED_ENGINES
+  ...EMBEDDED_ENGINES,
 ]);
 
 function showManualRestoreGuidance(engine: string): void {
@@ -79,20 +79,32 @@ function restoreViaStdin(dockerArgs: string[], snapshotPath: string, label: stri
   });
 }
 
-async function restorePostgreSQL(container: string, snapshotPath: string, env: Record<string, string>): Promise<void> {
+async function restorePostgreSQL(
+  container: string,
+  snapshotPath: string,
+  env: Record<string, string>,
+): Promise<void> {
   const { user } = getPostgresExecCredentials(env);
   // The dump was taken with --create, so connect to the maintenance database;
   // it recreates and reconnects to the target database itself.
-  await restoreViaStdin(['exec', '-i', container, 'psql', '-U', user, '-d', 'postgres'], snapshotPath, 'PostgreSQL');
+  await restoreViaStdin(
+    ['exec', '-i', container, 'psql', '-U', user, '-d', 'postgres'],
+    snapshotPath,
+    'PostgreSQL',
+  );
 }
 
-async function restoreMariaDB(container: string, snapshotPath: string, env: Record<string, string>): Promise<void> {
+async function restoreMariaDB(
+  container: string,
+  snapshotPath: string,
+  env: Record<string, string>,
+): Promise<void> {
   const password = getMariaDBRootPassword(env);
   // --all-databases dumps carry their own CREATE DATABASE / USE statements.
   await restoreViaStdin(
     ['exec', '-i', '-e', `MYSQL_PWD=${password}`, container, 'mysql', '-u', 'root'],
     snapshotPath,
-    'MariaDB'
+    'MariaDB',
   );
 }
 
@@ -104,7 +116,9 @@ async function restoreRedis(instanceName: string, snapshotPath: string): Promise
   await dockerManager.stopDatabase(instanceName);
   await new Promise<void>((resolve, reject) => {
     const cp = spawn('docker', ['cp', snapshotPath, `${container}:/data/dump.rdb`]);
-    cp.on('close', (code) => (code === 0 ? resolve() : reject(new Error('Failed to copy RDB into container'))));
+    cp.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error('Failed to copy RDB into container')),
+    );
     cp.on('error', reject);
   });
   await dockerManager.startDatabase(instanceName);
@@ -113,7 +127,9 @@ async function restoreRedis(instanceName: string, snapshotPath: string): Promise
 async function restoreEmbedded(volume: string, snapshotPath: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const tar = spawn('tar', ['-xzf', snapshotPath, '-C', volume]);
-    tar.on('close', (code) => (code === 0 ? resolve() : reject(new Error('Failed to extract embedded snapshot'))));
+    tar.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error('Failed to extract embedded snapshot')),
+    );
     tar.on('error', reject);
   });
 }
@@ -200,7 +216,12 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
 
   if (!options.confirm && !options.force) {
     const { proceed } = await inquirer.prompt([
-      { type: 'confirm', name: 'proceed', message: `Restore into '${targetName}'?`, default: false }
+      {
+        type: 'confirm',
+        name: 'proceed',
+        message: `Restore into '${targetName}'?`,
+        default: false,
+      },
     ]);
     if (!proceed) {
       console.log(chalk.yellow('Operation cancelled'));
@@ -212,7 +233,12 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
   try {
     await restoreInto(instance, snapshotPath);
     spinner.succeed(`Restored '${targetName}' from snapshot`);
-    await recordOperation({ operation: 'restore', source: path.basename(snapshotPath), target: targetName, success: true });
+    await recordOperation({
+      operation: 'restore',
+      source: path.basename(snapshotPath),
+      target: targetName,
+      success: true,
+    });
 
     console.log(chalk.green('\n✅ Restore completed!'));
     console.log(chalk.yellow('💡 Verify with: ') + chalk.cyan('hayai studio'));
@@ -223,9 +249,12 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
       source: path.basename(snapshotPath),
       target: targetName,
       success: false,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     });
-    console.error(chalk.red('\n❌ Restore failed:'), error instanceof Error ? error.message : error);
+    console.error(
+      chalk.red('\n❌ Restore failed:'),
+      error instanceof Error ? error.message : error,
+    );
     process.exit(1);
   }
 }
@@ -237,7 +266,9 @@ export const restoreCommand = new Command('restore')
   .option('-y, --confirm', 'Skip the confirmation prompt')
   .option('--force', 'Skip the confirmation prompt')
   .option('--verbose', 'Enable verbose output')
-  .addHelpText('after', `
+  .addHelpText(
+    'after',
+    `
 ${chalk.bold('Supported engines:')}
   ${chalk.green('✅ postgresql, timescaledb')}  - psql replays the SQL dump
   ${chalk.green('✅ mariadb')}                  - mysql replays the SQL dump
@@ -254,5 +285,6 @@ ${chalk.bold('Examples:')}
 
   ${chalk.cyan('# Restore a snapshot into a different instance')}
   hayai restore ./snapshots/prod-snapshot-....sql --to staging -y
-`)
+`,
+  )
   .action(handleRestore);

@@ -21,31 +21,34 @@ interface CloneOptions extends CLIOptions {
 
 // Engines with a reliable native clone implementation
 const FULLY_COMPATIBLE_ENGINES = new Set([
-  'postgresql',  // pg_dump + psql
-  'mariadb',     // mysqldump + mysql
-  'redis',       // BGSAVE + RDB copy
-  'sqlite',      // host file copy (embedded)
-  'duckdb',      // host file copy (embedded)
-  'leveldb',     // host file copy (embedded)
-  'lmdb'         // host file copy (embedded)
+  'postgresql', // pg_dump + psql
+  'mariadb', // mysqldump + mysql
+  'redis', // BGSAVE + RDB copy
+  'sqlite', // host file copy (embedded)
+  'duckdb', // host file copy (embedded)
+  'leveldb', // host file copy (embedded)
+  'lmdb', // host file copy (embedded)
 ]);
 
 const EMBEDDED_ENGINES = new Set(['sqlite', 'duckdb', 'leveldb', 'lmdb']);
 
-function validateCloneCompatibility(sourceEngine: string): { compatible: boolean; reason?: string } {
+function validateCloneCompatibility(sourceEngine: string): {
+  compatible: boolean;
+  reason?: string;
+} {
   if (!FULLY_COMPATIBLE_ENGINES.has(sourceEngine)) {
     return {
       compatible: false,
-      reason: `Engine '${sourceEngine}' uses generic backup which may be unreliable`
+      reason: `Engine '${sourceEngine}' uses generic backup which may be unreliable`,
     };
   }
-  
+
   return { compatible: true };
 }
 
 function showManualCloneGuidance(engine: string): void {
   console.log(chalk.yellow('\n💡 Manual Clone Guidance:'));
-  
+
   switch (engine) {
     case 'cassandra':
       console.log(chalk.gray('  • Use: nodetool snapshot + sstableloader'));
@@ -81,7 +84,7 @@ function showManualCloneGuidance(engine: string): void {
       console.log(chalk.gray('  • Use engine-specific export/import commands'));
       console.log(chalk.gray('  • Consider data migration tools or scripts'));
   }
-  
+
   console.log(chalk.yellow('\n📚 Alternative Options:'));
   console.log(chalk.gray('  • Use database-specific migration tools'));
   console.log(chalk.gray('  • Write custom data transfer scripts'));
@@ -91,7 +94,7 @@ function showManualCloneGuidance(engine: string): void {
 
 async function executeClone(sourceInstance: any, targetName: string): Promise<void> {
   const dockerManager = getDockerManager();
-  
+
   // Get source template
   const sourceTemplate = getTemplate(sourceInstance.engine);
   if (!sourceTemplate) {
@@ -99,28 +102,24 @@ async function executeClone(sourceInstance: any, targetName: string): Promise<vo
   }
 
   console.log(chalk.cyan(`🔄 Cloning ${sourceInstance.name} → ${targetName}...`));
-  
+
   // Create target database with same configuration
-  const targetInstance = await dockerManager.createDatabase(
-    targetName,
-    sourceTemplate,
-    {
-      port: undefined, // Let it auto-allocate
-      customEnv: { ...sourceInstance.environment }
-    }
-  );
+  const targetInstance = await dockerManager.createDatabase(targetName, sourceTemplate, {
+    port: undefined, // Let it auto-allocate
+    customEnv: { ...sourceInstance.environment },
+  });
 
   if (targetInstance.status !== 'embedded') {
     // Start target database
     await dockerManager.startDatabase(targetName);
 
     // Wait for database to be ready
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
   // Clone data based on database type
   await cloneData(sourceInstance, targetInstance);
-  
+
   console.log(chalk.green(`✅ Successfully cloned ${sourceInstance.name} → ${targetName}`));
 }
 
@@ -153,29 +152,31 @@ async function cloneData(source: any, target: any): Promise<void> {
 async function clonePostgreSQL(
   sourceContainer: string,
   targetContainer: string,
-  environment: Record<string, string> = {}
+  environment: Record<string, string> = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     // The target is freshly created with the same environment, so the
     // same-named empty database already exists there — a plain dump/restore
     // into it is enough.
     const { user, database } = getPostgresExecCredentials(environment);
-    const dumpProcess = spawn('docker', [
-      'exec', sourceContainer,
-      'pg_dump', '-U', user, '-d', database
-    ], { stdio: ['inherit', 'pipe', 'pipe'] });
+    const dumpProcess = spawn(
+      'docker',
+      ['exec', sourceContainer, 'pg_dump', '-U', user, '-d', database],
+      { stdio: ['inherit', 'pipe', 'pipe'] },
+    );
 
-    const restoreProcess = spawn('docker', [
-      'exec', '-i', targetContainer,
-      'psql', '-U', user, '-d', database
-    ], { stdio: ['pipe', 'inherit', 'pipe'] });
-    
+    const restoreProcess = spawn(
+      'docker',
+      ['exec', '-i', targetContainer, 'psql', '-U', user, '-d', database],
+      { stdio: ['pipe', 'inherit', 'pipe'] },
+    );
+
     dumpProcess.stdout.pipe(restoreProcess.stdin);
-    
+
     restoreProcess.on('close', (code) => {
       code === 0 ? resolve() : reject(new Error('PostgreSQL clone failed'));
     });
-    
+
     dumpProcess.on('error', reject);
     restoreProcess.on('error', reject);
   });
@@ -184,29 +185,40 @@ async function clonePostgreSQL(
 async function cloneMariaDB(
   sourceContainer: string,
   targetContainer: string,
-  environment: Record<string, string> = {}
+  environment: Record<string, string> = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const rootPassword = getMariaDBRootPassword(environment);
     const dumpTarget = environment.MYSQL_DATABASE
       ? ['--databases', environment.MYSQL_DATABASE]
       : ['--all-databases'];
-    const dumpProcess = spawn('docker', [
-      'exec', '-e', `MYSQL_PWD=${rootPassword}`, sourceContainer,
-      'mysqldump', '-u', 'root', ...dumpTarget
-    ], { stdio: ['inherit', 'pipe', 'pipe'] });
+    const dumpProcess = spawn(
+      'docker',
+      [
+        'exec',
+        '-e',
+        `MYSQL_PWD=${rootPassword}`,
+        sourceContainer,
+        'mysqldump',
+        '-u',
+        'root',
+        ...dumpTarget,
+      ],
+      { stdio: ['inherit', 'pipe', 'pipe'] },
+    );
 
-    const restoreProcess = spawn('docker', [
-      'exec', '-i', '-e', `MYSQL_PWD=${rootPassword}`, targetContainer,
-      'mysql', '-u', 'root'
-    ], { stdio: ['pipe', 'inherit', 'pipe'] });
-    
+    const restoreProcess = spawn(
+      'docker',
+      ['exec', '-i', '-e', `MYSQL_PWD=${rootPassword}`, targetContainer, 'mysql', '-u', 'root'],
+      { stdio: ['pipe', 'inherit', 'pipe'] },
+    );
+
     dumpProcess.stdout.pipe(restoreProcess.stdin);
-    
+
     restoreProcess.on('close', (code) => {
       code === 0 ? resolve() : reject(new Error('MariaDB clone failed'));
     });
-    
+
     dumpProcess.on('error', reject);
     restoreProcess.on('error', reject);
   });
@@ -215,35 +227,37 @@ async function cloneMariaDB(
 async function cloneRedis(sourceContainer: string, targetContainer: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Create RDB backup
-    const bgsaveProcess = spawn('docker', [
-      'exec', sourceContainer, 'redis-cli', 'BGSAVE'
-    ]);
-    
+    const bgsaveProcess = spawn('docker', ['exec', sourceContainer, 'redis-cli', 'BGSAVE']);
+
     bgsaveProcess.on('close', async (code) => {
       if (code !== 0) {
         reject(new Error('Redis backup failed'));
         return;
       }
-      
+
       // Wait for backup to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       // Copy RDB file
       const copyProcess = spawn('docker', [
-        'cp', `${sourceContainer}:/data/dump.rdb`, '/tmp/redis-clone.rdb'
+        'cp',
+        `${sourceContainer}:/data/dump.rdb`,
+        '/tmp/redis-clone.rdb',
       ]);
-      
+
       copyProcess.on('close', (copyCode) => {
         if (copyCode !== 0) {
           reject(new Error('Failed to copy Redis data'));
           return;
         }
-        
+
         // Restore to target
         const restoreProcess = spawn('docker', [
-          'cp', '/tmp/redis-clone.rdb', `${targetContainer}:/data/dump.rdb`
+          'cp',
+          '/tmp/redis-clone.rdb',
+          `${targetContainer}:/data/dump.rdb`,
         ]);
-        
+
         restoreProcess.on('close', async (restoreCode) => {
           if (restoreCode === 0) {
             // Restart target to load data
@@ -259,13 +273,13 @@ async function cloneRedis(sourceContainer: string, targetContainer: string): Pro
             reject(new Error('Failed to restore Redis data'));
           }
         });
-        
+
         restoreProcess.on('error', reject);
       });
-      
+
       copyProcess.on('error', reject);
     });
-    
+
     bgsaveProcess.on('error', reject);
   });
 }
@@ -273,7 +287,7 @@ async function cloneRedis(sourceContainer: string, targetContainer: string): Pro
 async function handleClone(options: CloneOptions): Promise<void> {
   const dockerManager = getDockerManager();
   await dockerManager.initialize();
-  
+
   // Validate source database
   const sourceInstance = dockerManager.getInstance(options.from);
   if (!sourceInstance) {
@@ -281,7 +295,7 @@ async function handleClone(options: CloneOptions): Promise<void> {
     console.log(chalk.yellow('💡 Run `hayai list` to see available databases'));
     process.exit(1);
   }
-  
+
   // Check if source is running (embedded engines have no server to run)
   if (sourceInstance.status !== 'running' && sourceInstance.status !== 'embedded') {
     console.error(chalk.red(`❌ Source database '${options.from}' must be running`));
@@ -292,25 +306,27 @@ async function handleClone(options: CloneOptions): Promise<void> {
   // Validate compatibility
   const compatibilityResult = validateCloneCompatibility(sourceInstance.engine);
   if (!compatibilityResult.compatible) {
-    console.error(chalk.red(`❌ Source engine '${sourceInstance.engine}' is not fully compatible for cloning.`));
+    console.error(
+      chalk.red(`❌ Source engine '${sourceInstance.engine}' is not fully compatible for cloning.`),
+    );
     console.error(chalk.red(`Reason: ${compatibilityResult.reason}`));
     showManualCloneGuidance(sourceInstance.engine);
     process.exit(1);
   }
-  
+
   // Determine target databases
   let targetNames: string[] = [];
-  
+
   if (options.to) {
     targetNames = [options.to];
   } else if (options.toMultiple) {
-    targetNames = options.toMultiple.split(',').map(name => name.trim());
+    targetNames = options.toMultiple.split(',').map((name) => name.trim());
   } else {
     console.error(chalk.red('❌ Must specify target database(s)'));
     console.log(chalk.yellow('💡 Use --to or --to-multiple'));
     process.exit(1);
   }
-  
+
   // Validate target names
   for (const targetName of targetNames) {
     if (dockerManager.getInstance(targetName)) {
@@ -321,17 +337,17 @@ async function handleClone(options: CloneOptions): Promise<void> {
       }
     }
   }
-  
+
   // Show preview
   console.log(chalk.cyan('\n🔍 Clone Preview:'));
   console.log(chalk.gray(`Source: ${options.from} (${sourceInstance.engine})`));
   console.log(chalk.gray(`Targets: ${targetNames.join(', ')}`));
-  
+
   if (options.dryRun) {
     console.log(chalk.yellow('\n🚧 Dry run - no actual cloning performed'));
     return;
   }
-  
+
   // Confirmation
   if (!options.confirm && !options.force) {
     const { proceed } = await inquirer.prompt([
@@ -342,37 +358,41 @@ async function handleClone(options: CloneOptions): Promise<void> {
         default: false,
       },
     ]);
-    
+
     if (!proceed) {
       console.log(chalk.yellow('Operation cancelled'));
       return;
     }
   }
-  
+
   // Execute clones
   const spinner = ora('Cloning databases...').start();
-  
+
   try {
     for (let i = 0; i < targetNames.length; i++) {
       const targetName = targetNames[i];
       spinner.text = `Cloning ${options.from} → ${targetName} (${i + 1}/${targetNames.length})`;
-      
+
       // Remove existing if force
       if (options.force && dockerManager.getInstance(targetName)) {
         await dockerManager.removeDatabase(targetName);
       }
-      
+
       await executeClone(sourceInstance, targetName);
-      await recordOperation({ operation: 'clone', source: options.from, target: targetName, success: true });
+      await recordOperation({
+        operation: 'clone',
+        source: options.from,
+        target: targetName,
+        success: true,
+      });
     }
 
     spinner.succeed(`Successfully cloned ${options.from} to ${targetNames.length} database(s)`);
-    
+
     console.log(chalk.green('\n✅ Clone operation completed!'));
     console.log(chalk.yellow('💡 Commands:'));
     console.log(`  • ${chalk.cyan('hayai list')} - View all databases`);
     console.log(`  • ${chalk.cyan('hayai studio')} - Open admin dashboards`);
-    
   } catch (error) {
     spinner.fail('Clone operation failed');
     await recordOperation({
@@ -380,7 +400,7 @@ async function handleClone(options: CloneOptions): Promise<void> {
       source: options.from,
       target: targetNames.join(','),
       success: false,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     });
     console.error(chalk.red('\n❌ Clone failed:'), error instanceof Error ? error.message : error);
     process.exit(1);
@@ -396,7 +416,9 @@ export const cloneCommand = new Command('clone')
   .option('--force', 'Overwrite existing target databases')
   .option('--dry-run', 'Show what would be cloned without executing')
   .option('--verbose', 'Enable verbose output')
-  .addHelpText('after', `
+  .addHelpText(
+    'after',
+    `
 ${chalk.bold('Supported Engines (Fully Compatible):')}
   ${chalk.green('✅ postgresql')}   - Native pg_dump + psql
   ${chalk.green('✅ mariadb')}      - Native mysqldump + mysql
@@ -429,5 +451,6 @@ ${chalk.bold('For unsupported engines:')}
   ${chalk.yellow('Use engine-specific tools:')} cassandra (nodetool), influx (backup/restore)
   ${chalk.yellow('Access admin dashboards:')} hayai studio
   ${chalk.yellow('Manual data migration:')} Write custom scripts or use migration tools
-`)
-  .action(handleClone); 
+`,
+  )
+  .action(handleClone);

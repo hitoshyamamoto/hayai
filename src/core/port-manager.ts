@@ -29,7 +29,7 @@ export class PortManager {
     await this.initialize();
 
     // If a preferred port is specified and available, use it
-    if (preferredPort && await this.isPortAvailable(preferredPort)) {
+    if (preferredPort && (await this.isPortAvailable(preferredPort))) {
       if (!this.allocatedPorts.has(preferredPort)) {
         this.allocatedPorts.set(preferredPort, serviceName);
         await this.saveAllocations();
@@ -39,7 +39,7 @@ export class PortManager {
 
     // Find the next available port in the range
     for (let port = this.portRange.start; port <= this.portRange.end; port++) {
-      if (!this.allocatedPorts.has(port) && await this.isPortAvailable(port)) {
+      if (!this.allocatedPorts.has(port) && (await this.isPortAvailable(port))) {
         this.allocatedPorts.set(port, serviceName);
         await this.saveAllocations();
         return port;
@@ -56,7 +56,7 @@ export class PortManager {
 
   public getPortAllocations(): PortAllocation[] {
     const allocations: PortAllocation[] = [];
-    
+
     for (const [port, service] of this.allocatedPorts.entries()) {
       allocations.push({
         port,
@@ -88,14 +88,14 @@ export class PortManager {
   private async isPortAvailable(port: number): Promise<boolean> {
     return new Promise((resolve) => {
       const server = net.createServer();
-      
+
       server.listen(port, () => {
         server.once('close', () => {
           resolve(true);
         });
         server.close();
       });
-      
+
       server.on('error', () => {
         resolve(false);
       });
@@ -105,13 +105,17 @@ export class PortManager {
   public async findAvailablePortsInRange(count: number): Promise<number[]> {
     await this.initialize();
     const availablePorts: number[] = [];
-    
-    for (let port = this.portRange.start; port <= this.portRange.end && availablePorts.length < count; port++) {
-      if (!this.allocatedPorts.has(port) && await this.isPortAvailable(port)) {
+
+    for (
+      let port = this.portRange.start;
+      port <= this.portRange.end && availablePorts.length < count;
+      port++
+    ) {
+      if (!this.allocatedPorts.has(port) && (await this.isPortAvailable(port))) {
         availablePorts.push(port);
       }
     }
-    
+
     return availablePorts;
   }
 
@@ -119,11 +123,17 @@ export class PortManager {
     this.allocatedPorts.clear();
   }
 
-  public getPortRangeInfo(): { start: number; end: number; total: number; allocated: number; available: number } {
+  public getPortRangeInfo(): {
+    start: number;
+    end: number;
+    total: number;
+    allocated: number;
+    available: number;
+  } {
     const total = this.portRange.end - this.portRange.start + 1;
     const allocated = this.allocatedPorts.size;
     const available = total - allocated;
-    
+
     return {
       start: this.portRange.start,
       end: this.portRange.end,
@@ -145,12 +155,12 @@ export class PortManager {
   private async loadAllocations(): Promise<void> {
     const dataDir = await getDataDirectory();
     const allocationsFile = path.join(dataDir, 'port-allocations.json');
-    
+
     if (await this.pathExists(allocationsFile)) {
       try {
         const content = await readFile(allocationsFile, 'utf-8');
         const allocationsData = JSON.parse(content);
-        
+
         this.allocatedPorts.clear();
         for (const [port, service] of Object.entries(allocationsData)) {
           this.allocatedPorts.set(parseInt(port), service as string);
@@ -164,12 +174,12 @@ export class PortManager {
   private async saveAllocations(): Promise<void> {
     const dataDir = await getDataDirectory();
     const allocationsFile = path.join(dataDir, 'port-allocations.json');
-    
+
     const allocationsData: Record<string, string> = {};
     for (const [port, service] of this.allocatedPorts) {
       allocationsData[port.toString()] = service;
     }
-    
+
     try {
       await writeFile(allocationsFile, JSON.stringify(allocationsData, null, 2), 'utf-8');
     } catch (error) {
@@ -179,7 +189,10 @@ export class PortManager {
 }
 
 // Convenience functions for global access
-export const allocatePort = async (serviceName: string, preferredPort?: number): Promise<number> => {
+export const allocatePort = async (
+  serviceName: string,
+  preferredPort?: number,
+): Promise<number> => {
   const manager = PortManager.getInstance();
   return await manager.allocatePort(serviceName, preferredPort);
 };
@@ -207,4 +220,4 @@ export const getServiceByPort = (port: number): string | undefined => {
 export const getPortByService = (serviceName: string): number | undefined => {
   const manager = PortManager.getInstance();
   return manager.getPortByService(serviceName);
-}; 
+};

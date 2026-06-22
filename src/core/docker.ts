@@ -35,31 +35,31 @@ export class DockerManager {
     return new Promise((resolve) => {
       // First check if docker command exists
       const child = spawn('docker', ['--version'], { stdio: 'pipe' });
-      
+
       let stdout = '';
-      
+
       child.stdout.on('data', (data) => {
         stdout += data.toString();
       });
-      
+
       child.stderr.on('data', (data) => {
         data.toString();
       });
-      
+
       child.on('close', (code) => {
         if (code !== 0) {
           resolve({
             isInstalled: false,
             isRunning: false,
-            error: 'Docker command not found'
+            error: 'Docker command not found',
           });
           return;
         }
-        
+
         // Docker is installed, now check if daemon is running
         const versionMatch = stdout.match(/Docker version (\d+\.\d+\.\d+)/);
         const version = versionMatch ? versionMatch[1] : 'unknown';
-        
+
         // Check if Docker daemon is running
         const pingChild = spawn('docker', ['info'], { stdio: 'pipe' });
 
@@ -69,7 +69,7 @@ export class DockerManager {
               isInstalled: true,
               isRunning: false,
               version,
-              error: 'Docker daemon not running'
+              error: 'Docker daemon not running',
             });
             return;
           }
@@ -83,7 +83,7 @@ export class DockerManager {
               isRunning: true,
               composeAvailable: composeCode === 0,
               version,
-              error: composeCode !== 0 ? 'Docker Compose V2 plugin not found' : undefined
+              error: composeCode !== 0 ? 'Docker Compose V2 plugin not found' : undefined,
             });
           });
 
@@ -93,7 +93,7 @@ export class DockerManager {
               isRunning: true,
               composeAvailable: false,
               version,
-              error: 'Docker Compose V2 plugin not found'
+              error: 'Docker Compose V2 plugin not found',
             });
           });
         });
@@ -102,16 +102,16 @@ export class DockerManager {
           resolve({
             isInstalled: true,
             isRunning: false,
-            error: 'Docker daemon not accessible'
+            error: 'Docker daemon not accessible',
           });
         });
       });
-      
+
       child.on('error', () => {
         resolve({
           isInstalled: false,
           isRunning: false,
-          error: 'Docker command not found'
+          error: 'Docker command not found',
         });
       });
     });
@@ -119,61 +119,68 @@ export class DockerManager {
 
   private showDockerInstallationInstructions(result: DockerVerificationResult): void {
     console.log(chalk.red('\n❌ Docker Setup Required\n'));
-    
+
     if (!result.isInstalled) {
       console.log(chalk.yellow('🐳 Docker is not installed on your system.'));
       console.log(chalk.gray('Hayai requires Docker to manage database containers.\n'));
-      
+
       console.log(chalk.bold('📦 Installation Instructions:\n'));
-      
+
       const platform = process.platform;
-      
+
       switch (platform) {
         case 'darwin': // macOS
           console.log(chalk.cyan('macOS:'));
-          console.log('  • Download Docker Desktop: https://docs.docker.com/desktop/install/mac-install/');
+          console.log(
+            '  • Download Docker Desktop: https://docs.docker.com/desktop/install/mac-install/',
+          );
           console.log('  • Or install via Homebrew: brew install --cask docker');
           break;
-          
+
         case 'win32': // Windows
           console.log(chalk.cyan('Windows:'));
-          console.log('  • Download Docker Desktop: https://docs.docker.com/desktop/install/windows-install/');
+          console.log(
+            '  • Download Docker Desktop: https://docs.docker.com/desktop/install/windows-install/',
+          );
           console.log('  • Or install via Chocolatey: choco install docker-desktop');
           console.log('  • Or install via Winget: winget install Docker.DockerDesktop');
           break;
-          
+
         default: // Linux
           console.log(chalk.cyan('Linux:'));
           console.log('  • Ubuntu/Debian: curl -fsSL https://get.docker.com | sh');
           console.log('  • Fedora: sudo dnf install docker-ce docker-ce-cli containerd.io');
           console.log('  • Arch: sudo pacman -S docker docker-compose');
-          console.log('  • Or use Docker Desktop: https://docs.docker.com/desktop/install/linux-install/');
+          console.log(
+            '  • Or use Docker Desktop: https://docs.docker.com/desktop/install/linux-install/',
+          );
           break;
       }
-      
     } else if (result.isRunning && result.composeAvailable === false) {
       console.log(chalk.yellow('🐳 Docker is running but the Compose V2 plugin is missing.'));
       console.log(chalk.gray(`Version: ${result.version}\n`));
 
       console.log(chalk.bold('📦 Install Docker Compose V2:\n'));
-      console.log(chalk.cyan('  • Docker Desktop: update to a recent version (Compose V2 is included)'));
+      console.log(
+        chalk.cyan('  • Docker Desktop: update to a recent version (Compose V2 is included)'),
+      );
       console.log(chalk.cyan('  • Debian/Ubuntu: sudo apt-get install docker-compose-plugin'));
       console.log(chalk.cyan('  • Other platforms: https://docs.docker.com/compose/install/'));
     } else if (!result.isRunning) {
       console.log(chalk.yellow('🐳 Docker is installed but not running.'));
       console.log(chalk.gray(`Version: ${result.version}\n`));
-      
+
       console.log(chalk.bold('🚀 Start Docker:\n'));
-      
+
       const platform = process.platform;
-      
+
       switch (platform) {
         case 'darwin': // macOS
         case 'win32': // Windows
           console.log(chalk.cyan('• Start Docker Desktop application'));
           console.log(chalk.cyan('• Wait for Docker to fully initialize'));
           break;
-          
+
         default: // Linux
           console.log(chalk.cyan('• sudo systemctl start docker'));
           console.log(chalk.cyan('• sudo systemctl enable docker  # Enable auto-start'));
@@ -181,8 +188,10 @@ export class DockerManager {
           break;
       }
     }
-    
-    console.log(chalk.yellow('\n💡 After installing/starting Docker, try running your command again.'));
+
+    console.log(
+      chalk.yellow('\n💡 After installing/starting Docker, try running your command again.'),
+    );
     console.log(chalk.gray('🔍 Verify Docker: docker --version && docker info\n'));
   }
 
@@ -190,17 +199,17 @@ export class DockerManager {
     if (this.dockerVerified) {
       return; // Already verified in this session
     }
-    
+
     const result = await this.checkDockerInstallation();
 
     if (!result.isInstalled || !result.isRunning || !result.composeAvailable) {
       this.showDockerInstallationInstructions(result);
       process.exit(1);
     }
-    
+
     // Docker is ready
     this.dockerVerified = true;
-    
+
     console.log(chalk.green(`✅ Docker ${result.version} is ready`));
   }
 
@@ -216,7 +225,7 @@ export class DockerManager {
   public async initialize(): Promise<void> {
     // Verify Docker setup before doing anything else
     await this.verifyDockerSetup();
-    
+
     await this.loadExistingInstances();
     await this.loadComposeFile();
   }
@@ -228,7 +237,7 @@ export class DockerManager {
       port?: number;
       adminDashboard?: boolean;
       customEnv?: Record<string, string>;
-    } = {}
+    } = {},
   ): Promise<DatabaseInstance> {
     // Validate name
     if (this.instances.has(name)) {
@@ -302,7 +311,7 @@ export class DockerManager {
     this.instances.delete(name);
 
     // Clean up data directory unless the caller asked to keep it
-    if (!options.keepData && await this.pathExists(instance.volume)) {
+    if (!options.keepData && (await this.pathExists(instance.volume))) {
       await rm(instance.volume, { recursive: true });
     }
 
@@ -318,7 +327,11 @@ export class DockerManager {
     }
 
     if (instance.status === 'embedded') {
-      console.log(chalk.gray(`ℹ️  '${name}' is an embedded database — nothing to start. Data: ${instance.volume}`));
+      console.log(
+        chalk.gray(
+          `ℹ️  '${name}' is an embedded database — nothing to start. Data: ${instance.volume}`,
+        ),
+      );
       return;
     }
 
@@ -371,10 +384,10 @@ export class DockerManager {
 
   private async executeDockerCompose(args: string[]): Promise<string> {
     const composeFilePath = await getComposeFilePath();
-    
+
     return new Promise((resolve, reject) => {
       const child = spawn('docker', ['compose', '-f', composeFilePath, ...args], {
-        stdio: ['inherit', 'pipe', 'pipe']
+        stdio: ['inherit', 'pipe', 'pipe'],
       });
 
       let stdout = '';
@@ -406,7 +419,7 @@ export class DockerManager {
     try {
       // Ensure compose file is up to date
       await this.updateComposeFile();
-      
+
       await this.executeDockerCompose(['up', '-d']);
       for (const [name, instance] of this.instances) {
         if (instance.status === 'embedded') continue;
@@ -429,7 +442,7 @@ export class DockerManager {
     try {
       // Ensure compose file exists
       await this.updateComposeFile();
-      
+
       await this.executeDockerCompose(['stop']);
       for (const [name, instance] of this.instances) {
         if (instance.status === 'embedded') continue;
@@ -457,11 +470,11 @@ export class DockerManager {
   }
 
   public getRunningInstances(): DatabaseInstance[] {
-    return this.getAllInstances().filter(instance => instance.status === 'running');
+    return this.getAllInstances().filter((instance) => instance.status === 'running');
   }
 
   public getStoppedInstances(): DatabaseInstance[] {
-    return this.getAllInstances().filter(instance => instance.status === 'stopped');
+    return this.getAllInstances().filter((instance) => instance.status === 'stopped');
   }
 
   private async updateComposeFile(): Promise<void> {
@@ -486,7 +499,7 @@ export class DockerManager {
       }
       const serviceName = `${name}-db`;
       const defaultPort = this.getDefaultPortForEngine(instance.engine);
-      
+
       const serviceConfig: any = {
         image: this.getImageForEngine(instance.engine),
         volumes: [`${instance.volume}:${this.getDefaultVolumeForEngine(instance.engine)}`],
@@ -521,14 +534,14 @@ export class DockerManager {
   private async loadExistingInstances(): Promise<void> {
     const dataDir = await getDataDirectory();
     const instancesFile = path.join(dataDir, 'instances.json');
-    
+
     this.instances.clear();
-    
+
     if (await this.pathExists(instancesFile)) {
       try {
         const content = await readFile(instancesFile, 'utf-8');
         const instancesData = JSON.parse(content);
-        
+
         for (const [name, instanceData] of Object.entries(instancesData)) {
           this.instances.set(name, instanceData as DatabaseInstance);
         }
@@ -541,12 +554,12 @@ export class DockerManager {
   private async saveInstances(): Promise<void> {
     const dataDir = await getDataDirectory();
     const instancesFile = path.join(dataDir, 'instances.json');
-    
+
     const instancesData: Record<string, DatabaseInstance> = {};
     for (const [name, instance] of this.instances) {
       instancesData[name] = instance;
     }
-    
+
     try {
       await writeFile(instancesFile, JSON.stringify(instancesData, null, 2), 'utf-8');
     } catch (error) {
@@ -556,7 +569,7 @@ export class DockerManager {
 
   private async loadComposeFile(): Promise<void> {
     const composeFilePath = await getComposeFilePath();
-    
+
     if (await this.pathExists(composeFilePath)) {
       try {
         const content = await readFile(composeFilePath, 'utf-8');
@@ -568,41 +581,46 @@ export class DockerManager {
     }
   }
 
-  private generateConnectionUri(template: DatabaseTemplate, port: number, dbName: string, volumePath: string): string {
+  private generateConnectionUri(
+    template: DatabaseTemplate,
+    port: number,
+    dbName: string,
+    volumePath: string,
+  ): string {
     const engine = template.engine;
     const env = engine.environment;
 
     switch (engine.name) {
       case 'postgresql':
         return `postgresql://${env.POSTGRES_USER}:${env.POSTGRES_PASSWORD}@localhost:${port}/${env.POSTGRES_DB}`;
-      
+
       case 'mariadb':
         return `mysql://${env.MYSQL_USER}:${env.MYSQL_PASSWORD}@localhost:${port}/${env.MYSQL_DATABASE}`;
-      
+
       case 'redis':
         return `redis://:${env.REDIS_PASSWORD}@localhost:${port}`;
-      
+
       case 'cassandra':
         return `cassandra://localhost:${port}`;
-      
+
       case 'qdrant':
         return `http://localhost:${port}`;
-      
+
       case 'weaviate':
         return `http://localhost:${port}`;
-      
+
       case 'milvus':
         return `http://localhost:${port}`;
-      
+
       case 'arangodb':
         return `http://localhost:${port}`;
-      
+
       case 'meilisearch':
         return `http://localhost:${port}`;
-      
+
       case 'typesense':
         return `http://localhost:${port}`;
-      
+
       case 'sqlite':
         return `sqlite://${path.join(volumePath, `${dbName}.db`)}`;
 
@@ -614,26 +632,26 @@ export class DockerManager {
 
       case 'lmdb':
         return `lmdb://${volumePath}`;
-      
+
       // Time Series Databases
       case 'influxdb3':
         return `http://localhost:${port}`;
-      
+
       case 'influxdb2':
         return `http://localhost:${port}`;
-      
+
       case 'timescaledb':
         return `postgresql://${env.POSTGRES_USER}:${env.POSTGRES_PASSWORD}@localhost:${port}/${env.POSTGRES_DB}`;
-      
+
       case 'questdb':
         return `postgresql://admin:quest@localhost:8812/qdb`;
-      
+
       case 'victoriametrics':
         return `http://localhost:${port}`;
-      
+
       case 'horaedb':
         return `http://localhost:${port}`;
-      
+
       default:
         return `http://localhost:${port}`;
     }
@@ -822,19 +840,21 @@ export class DockerManager {
       },
     };
 
-    return healthcheckMap[engineName] || {
-      test: 'echo "healthy"',
-      interval: '30s',
-      timeout: '10s',
-      retries: 3,
-    };
+    return (
+      healthcheckMap[engineName] || {
+        test: 'echo "healthy"',
+        interval: '30s',
+        timeout: '10s',
+        retries: 3,
+      }
+    );
   }
 
   public async getComposeFileContent(): Promise<string> {
     if (!this.composeFile) {
       await this.updateComposeFile();
     }
-    
+
     return yaml.stringify(this.composeFile, {
       indent: 2,
       lineWidth: 120,
@@ -870,7 +890,7 @@ export class DockerManager {
     // Add database connection URIs
     updatedLines.push('');
     updatedLines.push('# Database connections generated by Hayai');
-    
+
     for (const [name, instance] of this.instances) {
       const varName = `${name.toUpperCase()}_DB_URL`;
       if (!addedVars.has(varName)) {
@@ -895,7 +915,7 @@ export const createDatabase = async (
     port?: number;
     adminDashboard?: boolean;
     customEnv?: Record<string, string>;
-  } = {}
+  } = {},
 ): Promise<DatabaseInstance> => {
   const manager = DockerManager.getInstance();
   await manager.initialize();
@@ -904,7 +924,7 @@ export const createDatabase = async (
 
 export const removeDatabase = async (
   name: string,
-  options: { keepData?: boolean } = {}
+  options: { keepData?: boolean } = {},
 ): Promise<void> => {
   const manager = DockerManager.getInstance();
   await manager.initialize();
@@ -932,17 +952,17 @@ export const getAllDatabases = async (): Promise<DatabaseInstance[]> => {
 export async function executeDockerCommand(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const process = spawn('docker', args);
-    
+
     let stdout = '';
-    
+
     process.stdout.on('data', (data) => {
       stdout += data.toString();
     });
-    
+
     process.stderr.on('data', (data) => {
       data.toString();
     });
-    
+
     process.on('close', (code) => {
       code === 0 ? resolve(stdout) : reject(new Error(`Docker command failed with code ${code}`));
     });

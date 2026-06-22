@@ -12,10 +12,10 @@ export class HayaiDbManager {
   public static async exportConfig(outputPath?: string): Promise<string> {
     const dockerManager = getDockerManager();
     await dockerManager.initialize();
-    
+
     const instances = dockerManager.getAllInstances();
     const configPath = outputPath || HayaiDbManager.CONFIG_FILE;
-    
+
     const config: HayaiDbConfig = {
       version: '1.0',
       project: path.basename(process.cwd()),
@@ -46,7 +46,7 @@ export class HayaiDbManager {
 
     // Write to file
     await writeFile(configPath, yamlContent, 'utf-8');
-    
+
     return configPath;
   }
 
@@ -56,25 +56,25 @@ export class HayaiDbManager {
     errors: { name: string; error: string }[];
   }> {
     const filePath = configPath || HayaiDbManager.CONFIG_FILE;
-    
+
     // Check if file exists
-    if (!await HayaiDbManager.fileExists(filePath)) {
+    if (!(await HayaiDbManager.fileExists(filePath))) {
       throw new Error(`Configuration file '${filePath}' not found`);
     }
 
     // Read and parse config
     const content = await readFile(filePath, 'utf-8');
     const config = yaml.parse(content) as HayaiDbConfig;
-    
+
     // Validate config
     HayaiDbManager.validateConfig(config);
 
     const dockerManager = getDockerManager();
     await dockerManager.initialize();
-    
+
     const existingInstances = dockerManager.getAllInstances();
-    const existingNames = new Set(existingInstances.map(i => i.name));
-    
+    const existingNames = new Set(existingInstances.map((i) => i.name));
+
     const result = {
       created: [] as string[],
       skipped: [] as string[],
@@ -93,9 +93,9 @@ export class HayaiDbManager {
         // Get template for the engine
         const template = DatabaseTemplates.getTemplate(spec.engine);
         if (!template) {
-          result.errors.push({ 
-            name, 
-            error: `Unknown engine: ${spec.engine}` 
+          result.errors.push({
+            name,
+            error: `Unknown engine: ${spec.engine}`,
           });
           continue;
         }
@@ -109,9 +109,9 @@ export class HayaiDbManager {
 
         result.created.push(name);
       } catch (error) {
-        result.errors.push({ 
-          name, 
-          error: error instanceof Error ? error.message : String(error) 
+        result.errors.push({
+          name,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -156,16 +156,16 @@ export class HayaiDbManager {
 
   public static async loadConfig(configPath?: string): Promise<HayaiDbConfig> {
     const filePath = configPath || HayaiDbManager.CONFIG_FILE;
-    
-    if (!await HayaiDbManager.fileExists(filePath)) {
+
+    if (!(await HayaiDbManager.fileExists(filePath))) {
       throw new Error(`Configuration file '${filePath}' not found`);
     }
 
     const content = await readFile(filePath, 'utf-8');
     const config = yaml.parse(content) as HayaiDbConfig;
-    
+
     await HayaiDbManager.validateConfig(config);
-    
+
     return config;
   }
 
@@ -219,4 +219,4 @@ export class HayaiDbManager {
       },
     };
   }
-} 
+}

@@ -68,7 +68,7 @@ export class ConfigManager {
     try {
       // Ensure directory exists
       await this.ensureDir(path.dirname(this.configPath));
-      
+
       const configContent = yaml.stringify(this.config, {
         indent: 2,
         lineWidth: 80,
@@ -164,4 +164,4 @@ export const getLogFilePath = async (): Promise<string> => {
   const manager = ConfigManager.getInstance();
   await manager.loadConfig();
   return manager.getLogFilePath();
-}; 
+};

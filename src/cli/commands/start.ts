@@ -27,9 +27,11 @@ export const startCommand = new Command('start')
       console.log(chalk.green('\n✅ Database(s) started!'));
       console.log(chalk.yellow('💡 Run `hayai list` to see running instances'));
       console.log(chalk.yellow('💡 Run `hayai studio` to open admin dashboards'));
-
     } catch (error) {
-      console.error(chalk.red('\n❌ Failed to start database(s):'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to start database(s):'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
-  }); 
+  });

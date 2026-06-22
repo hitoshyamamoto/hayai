@@ -54,7 +54,10 @@ export const logsCommand = new Command('logs')
         process.exit(code ?? 0);
       });
     } catch (error) {
-      console.error(chalk.red('\n❌ Failed to show logs:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to show logs:'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
   });

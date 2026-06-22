@@ -546,118 +546,121 @@ export class DatabaseTemplates {
     return engines;
   }
 
-  public static getOpenSourceInfo(): Record<string, { license: string; fullyOpenSource: boolean; notes: string }> {
+  public static getOpenSourceInfo(): Record<
+    string,
+    { license: string; fullyOpenSource: boolean; notes: string }
+  > {
     return {
       postgresql: {
         license: 'PostgreSQL License (MIT-like)',
         fullyOpenSource: true,
-        notes: 'Completely free and widely adopted'
+        notes: 'Completely free and widely adopted',
       },
       mariadb: {
         license: 'GPL v2',
         fullyOpenSource: true,
-        notes: 'MySQL community fork with enhanced features'
+        notes: 'MySQL community fork with enhanced features',
       },
       sqlite: {
         license: 'Public Domain',
         fullyOpenSource: true,
-        notes: 'No license or attribution required'
+        notes: 'No license or attribution required',
       },
       duckdb: {
         license: 'MIT',
         fullyOpenSource: true,
-        notes: 'Optimized for local analytics'
+        notes: 'Optimized for local analytics',
       },
       redis: {
         license: 'BSD 3-Clause',
         fullyOpenSource: true,
-        notes: 'Completely open-source'
+        notes: 'Completely open-source',
       },
       leveldb: {
         license: 'BSD',
         fullyOpenSource: true,
-        notes: 'Low-level, used internally by many tools'
+        notes: 'Low-level, used internally by many tools',
       },
       lmdb: {
         license: 'OpenLDAP Public License (BSD-like)',
         fullyOpenSource: true,
-        notes: 'Ultra-fast memory-mapped key-value store, 32KB footprint'
+        notes: 'Ultra-fast memory-mapped key-value store, 32KB footprint',
       },
       cassandra: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Completely open-source'
+        notes: 'Completely open-source',
       },
       tikv: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'CNCF graduated project, distributed transactional key-value store'
+        notes: 'CNCF graduated project, distributed transactional key-value store',
       },
       qdrant: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Fast with REST API and native embedding support'
+        notes: 'Fast with REST API and native embedding support',
       },
       weaviate: {
         license: 'BSD 3-Clause',
         fullyOpenSource: true,
-        notes: 'Requires Docker for local instance'
+        notes: 'Requires Docker for local instance',
       },
       milvus: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Built for AI and semantic search'
+        notes: 'Built for AI and semantic search',
       },
       arangodb: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Supports Graph + Document + Key-Value'
+        notes: 'Supports Graph + Document + Key-Value',
       },
       nebula: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Distributed graph database with millisecond latency and native GQL support'
+        notes: 'Distributed graph database with millisecond latency and native GQL support',
       },
       meilisearch: {
         license: 'MIT',
         fullyOpenSource: true,
-        notes: 'Lightweight and modern, great for TypeScript projects'
+        notes: 'Lightweight and modern, great for TypeScript projects',
       },
       typesense: {
         license: 'GPL v3',
         fullyOpenSource: true,
-        notes: 'Modern alternative to Meilisearch'
+        notes: 'Modern alternative to Meilisearch',
       },
       influxdb3: {
         license: 'MIT/Apache 2.0',
         fullyOpenSource: true,
-        notes: 'InfluxDB 3 Core - Optimized for recent data (72h), with integrated Python'
+        notes: 'InfluxDB 3 Core - Optimized for recent data (72h), with integrated Python',
       },
       influxdb2: {
         license: 'MIT',
         fullyOpenSource: true,
-        notes: 'InfluxDB 2.x - Mature, stable, full-featured time series platform'
+        notes: 'InfluxDB 2.x - Mature, stable, full-featured time series platform',
       },
       timescaledb: {
         license: 'Timescale License (TSL)',
         fullyOpenSource: false,
-        notes: 'Source-available, allows internal use, only prohibits hosting as service'
+        notes: 'Source-available, allows internal use, only prohibits hosting as service',
       },
       questdb: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Exceptional performance, native SQL, Parquet format'
+        notes: 'Exceptional performance, native SQL, Parquet format',
       },
       victoriametrics: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Prometheus alternative, optimized for metrics and monitoring'
+        notes: 'Prometheus alternative, optimized for metrics and monitoring',
       },
       horaedb: {
         license: 'Apache 2.0',
         fullyOpenSource: true,
-        notes: 'Apache HoraeDB - Distributed, cloud-native, in incubation'
-      }
+        notes: 'Apache HoraeDB - Distributed, cloud-native, in incubation',
+      },
     };
   }
 }
@@ -691,6 +694,9 @@ export const getEnginesByType = (type: string): string[] => {
   return DatabaseTemplates.getEnginesByType(type);
 };
 
-export const getOpenSourceInfo = (): Record<string, { license: string; fullyOpenSource: boolean; notes: string }> => {
+export const getOpenSourceInfo = (): Record<
+  string,
+  { license: string; fullyOpenSource: boolean; notes: string }
+> => {
   return DatabaseTemplates.getOpenSourceInfo();
-}; 
+};

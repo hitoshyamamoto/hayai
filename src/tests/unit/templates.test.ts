@@ -9,7 +9,7 @@ describe('DatabaseTemplates - Basic Validation', () => {
 
   it('should have valid structure for all templates', () => {
     const templates = DatabaseTemplates.getAllTemplates();
-    
+
     templates.forEach((template, key) => {
       // Basic structure validation
       expect(template.name).toBeTruthy();
@@ -54,4 +54,4 @@ describe('DatabaseTemplates - Basic Validation', () => {
     expect(wideColumnEngines).toHaveLength(1);
     expect(wideColumnEngines).toContain('cassandra');
   });
-}); 
+});

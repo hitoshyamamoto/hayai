@@ -26,9 +26,11 @@ export const stopCommand = new Command('stop')
 
       console.log(chalk.green('\n✅ Database(s) stopped!'));
       console.log(chalk.yellow('💡 Run `hayai list` to see current status'));
-
     } catch (error) {
-      console.error(chalk.red('\n❌ Failed to stop database(s):'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to stop database(s):'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
-  }); 
+  });
