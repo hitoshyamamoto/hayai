@@ -8,7 +8,8 @@ import { spawn } from 'child_process';
 import { getDockerManager } from '../../core/docker.js';
 import { getTemplate } from '../../core/templates.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
-import { SnapshotOptions } from '../../core/types.js';
+import { recordOperation } from '../../core/security.js';
+import { DatabaseInstance, SnapshotOptions } from '../../core/types.js';
 
 async function createSnapshotDirectory(dir: string): Promise<void> {
   try {
@@ -265,6 +266,30 @@ async function createCassandraSnapshot(instanceName: string, snapshotPath: strin
   });
 }
 
+// The snapshot file extension follows the engine's native backup format.
+function snapshotExtension(engine: string): string {
+  if (engine === 'redis') return 'rdb';
+  if (engine.includes('influx') || engine === 'cassandra') return 'tar.gz';
+  if (EMBEDDED_ENGINES.has(engine)) return 'tar.gz';
+  return 'sql';
+}
+
+// Writes a timestamped snapshot of an instance and returns its path. Shared by
+// the snapshot command and by `merge --backup-both`.
+export async function snapshotInstance(
+  instance: DatabaseInstance,
+  outputDir = './snapshots'
+): Promise<string> {
+  await createSnapshotDirectory(outputDir);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const snapshotPath = path.join(
+    outputDir,
+    `${instance.name}-snapshot-${timestamp}.${snapshotExtension(instance.engine)}`
+  );
+  await createSnapshot(instance, snapshotPath);
+  return snapshotPath;
+}
+
 export const snapshotCommand = new Command('snapshot')
   .description('Create snapshots of database instances')
   .argument('<name>', 'Database instance name')
@@ -287,39 +312,38 @@ export const snapshotCommand = new Command('snapshot')
         process.exit(1);
       }
 
-      // Create snapshots directory
-      await createSnapshotDirectory(options.output || './snapshots');
-
-      // Generate snapshot filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const snapshotName = `${name}-snapshot-${timestamp}`;
-      const outputDir = options.output || path.join(process.cwd(), 'snapshots');
-      
-      // The extension follows the engine's native backup format
-      let extension = 'sql';
-      if (instance.engine === 'redis') extension = 'rdb';
-      if (instance.engine.includes('influx') || instance.engine === 'cassandra') extension = 'tar.gz';
-      if (EMBEDDED_ENGINES.has(instance.engine)) extension = 'tar.gz';
-      
-      const snapshotPath = path.join(outputDir, `${snapshotName}.${extension}`);
+      const outputDir = options.output || './snapshots';
 
       console.log(chalk.cyan(`📸 Creating snapshot of '${name}'...`));
       console.log(chalk.gray(`Engine: ${instance.engine}`));
-      console.log(chalk.gray(`Output: ${snapshotPath}`));
 
       const spinner = ora('Creating snapshot...').start();
 
-      await createSnapshot(instance, snapshotPath);
+      let snapshotPath: string;
+      try {
+        snapshotPath = await snapshotInstance(instance, outputDir);
+      } catch (error) {
+        spinner.fail('Snapshot failed');
+        await recordOperation({
+          operation: 'snapshot',
+          source: name,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
 
-      // Get file size
       const stats = await fs.stat(snapshotPath);
       const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
       spinner.succeed(`Snapshot created successfully (${fileSizeMB} MB)`);
+      await recordOperation({ operation: 'snapshot', source: name, target: snapshotPath, success: true });
 
+      console.log(chalk.gray(`Output: ${snapshotPath}`));
       console.log(chalk.green('\n✅ Snapshot completed!'));
       console.log(chalk.yellow('💡 Commands:'));
       console.log(`  • ${chalk.cyan('hayai snapshot list')} - View all snapshots`);
+      console.log(`  • ${chalk.cyan(`hayai restore ${path.basename(snapshotPath)}`)} - Restore this snapshot`);
 
     } catch (error) {
       console.error(chalk.red('❌ Snapshot failed:'), error instanceof Error ? error.message : error);

@@ -214,6 +214,7 @@ hayai --version
 | `hayai remove <name>` | Remove database instance | `hayai remove mydb --keep-data` |
 | `hayai logs <name>` | Stream database container logs | `hayai logs mydb --follow` |
 | `hayai snapshot <name>` | Create database snapshot | `hayai snapshot mydb` |
+| `hayai restore <snapshot>` | Restore a database from a snapshot (postgres, mariadb, redis, embedded) | `hayai restore mydb-snapshot-....sql` |
 | `hayai clone <options>` | Clone database instances | `hayai clone --from prod --to staging` |
 | `hayai merge <options>` | Merge a source database into a target | `hayai merge --source dbA --target dbB --preview` |
 | `hayai migrate <options>` | Plan a cross-engine migration (validation + guidance; execution not yet implemented) | `hayai migrate -f db1 -t db2 -e influxdb3 --dry-run` |
