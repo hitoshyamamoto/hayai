@@ -13,6 +13,7 @@ import { removeCommand } from './commands/remove.js';
 import { logsCommand } from './commands/logs.js';
 import { studioCommand } from './commands/studio.js';
 import { snapshotCommand } from './commands/snapshot.js';
+import { restoreCommand } from './commands/restore.js';
 import { exportCommand } from './commands/export.js';
 import { syncCommand } from './commands/sync.js';
 import { cloneCommand } from './commands/clone.js';
@@ -113,6 +114,7 @@ ${chalk.bold('COMMANDS')}
   ${chalk.cyan('logs')} <name>   View logs from a database instance
   ${chalk.cyan('studio')} [name] Open admin dashboards
   ${chalk.cyan('snapshot')} <name> Create a database snapshot
+  ${chalk.cyan('restore')} <snapshot> Restore a database from a snapshot
   ${chalk.cyan('clone')} <options> Clone database instances (compatible engines only)
   ${chalk.cyan('merge')} <options> Merge two database instances
   ${chalk.cyan('migrate')} <options> Migrate between compatible engines
@@ -145,6 +147,7 @@ program.addCommand(removeCommand);
 program.addCommand(logsCommand);
 program.addCommand(studioCommand);
 program.addCommand(snapshotCommand);
+program.addCommand(restoreCommand);
 program.addCommand(cloneCommand);
 program.addCommand(mergeCommand);
 program.addCommand(migrateCommand);
@@ -173,6 +176,7 @@ ${chalk.bold('COMMANDS')}
   ${chalk.cyan('logs')} <name>   View logs from a database instance
   ${chalk.cyan('studio')} [name] Open admin dashboards
   ${chalk.cyan('snapshot')} <name> Create a database snapshot
+  ${chalk.cyan('restore')} <snapshot> Restore a database from a snapshot
   ${chalk.cyan('clone')} <options> Clone database instances (compatible engines only)
   ${chalk.cyan('merge')} <options> Merge two database instances
   ${chalk.cyan('migrate')} <options> Migrate between compatible engines
