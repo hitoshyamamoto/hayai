@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `hayai connect <name>` prints an instance's connection details. `--uri` emits
+  just the URI for scripting (`export DATABASE_URL=$(hayai connect mydb --uri)`)
+  and `--json` emits the structured form.
+- `init` warns when an engine is experimental. TiKV, Milvus, and NebulaGraph are
+  flagged: hayai runs them as a single container, but they need a multi-node
+  cluster to be dependable.
+
 ### Changed
+- The decorative banner now prints to stderr, so data commands keep stdout clean
+  and pipeable (`connect --uri`, `list --format json`).
 - **Minimum Node.js is now 22.13** (was 18). Node 18 and 20 are both end-of-life;
   the runtime dependency bumps below require Node 22+. CI now tests Node 22 and 24.
 - Update runtime dependencies: `commander` 12 → 15, `inquirer` 9 → 14 (drops the

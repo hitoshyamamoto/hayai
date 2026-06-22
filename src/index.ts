@@ -16,6 +16,8 @@ export {
   getOpenSourceInfo,
 } from './core/templates.js';
 
+export { buildConnectionInfo } from './core/connection.js';
+export type { ConnectionInfo } from './core/connection.js';
 export { DockerManager, getDockerManager } from './core/docker.js';
 export { HayaiDbManager } from './core/hayaidb.js';
 export { SecurityManager, getSecurityManager, recordOperation } from './core/security.js';
