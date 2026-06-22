@@ -5,6 +5,7 @@ import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
 import { getTemplate } from '../../core/templates.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
+import { recordOperation } from '../../core/security.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
 import { cp } from 'fs/promises';
@@ -362,8 +363,9 @@ async function handleClone(options: CloneOptions): Promise<void> {
       }
       
       await executeClone(sourceInstance, targetName);
+      await recordOperation({ operation: 'clone', source: options.from, target: targetName, success: true });
     }
-    
+
     spinner.succeed(`Successfully cloned ${options.from} to ${targetNames.length} database(s)`);
     
     console.log(chalk.green('\n✅ Clone operation completed!'));
@@ -373,6 +375,13 @@ async function handleClone(options: CloneOptions): Promise<void> {
     
   } catch (error) {
     spinner.fail('Clone operation failed');
+    await recordOperation({
+      operation: 'clone',
+      source: options.from,
+      target: targetNames.join(','),
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
     console.error(chalk.red('\n❌ Clone failed:'), error instanceof Error ? error.message : error);
     process.exit(1);
   }

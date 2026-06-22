@@ -274,8 +274,10 @@ async function handleSecurity(options: SecurityOptions): Promise<void> {
   const policy = await securityManager.getSecurityPolicy();
   
   console.log(chalk.bold('Security Status:'));
-  console.log(chalk.yellow('  ⚠️  The policy below is configuration only — it is not yet'));
-  console.log(chalk.yellow('     enforced by clone/merge or other data commands. See SECURITY.md.'));
+  console.log(chalk.gray('  Audit logging is wired: data operations (clone, merge, snapshot,'));
+  console.log(chalk.gray('  restore, remove) append to the audit log when it is enabled.'));
+  console.log(chalk.yellow('  ⚠️  The rest of the policy — allowed-operation gating, rate limit,'));
+  console.log(chalk.yellow('     network isolation — is still not enforced. See SECURITY.md.'));
 
   // Check security settings
   const securityScore = calculateSecurityScore(policy);
@@ -344,9 +346,11 @@ export const securityCommand = new Command('security')
   .option('--verbose', 'Enable verbose output')
   .addHelpText('after', `
 ${chalk.bold('Status:')}
-  ${chalk.yellow('⚠️  These are standalone utilities. The security policy, audit log,')}
-  ${chalk.yellow('and stored credentials are NOT yet enforced or used by the data')}
-  ${chalk.yellow('commands (clone, merge, snapshot, ...). See SECURITY.md for details.')}
+  ${chalk.gray('Audit logging is enforced: clone, merge, snapshot, restore and remove')}
+  ${chalk.gray('append to .hayai/audit.log when auditOperations is enabled (default on).')}
+  ${chalk.yellow('⚠️  The rest of the policy (allowed-operation gating, rate limiting,')}
+  ${chalk.yellow('network isolation) and the stored credential store are NOT yet used by')}
+  ${chalk.yellow('the data commands. See SECURITY.md for details.')}
 
 ${chalk.bold('What this command provides today:')}
 
@@ -357,8 +361,8 @@ ${chalk.cyan('🔐 Credential Utilities:')}
     this deters casual reading, it is not a vault
 
 ${chalk.cyan('📋 Policy & Audit Files:')}
-  • Writes .hayai/security.json and reads .hayai/audit.log
-  • Operations do not consult or write these yet
+  • Writes .hayai/security.json (policy) and .hayai/audit.log
+  • Data operations append to the audit log; policy gating is not enforced yet
 
 ${chalk.bold('Examples:')}
   ${chalk.cyan('# Configure security for the first time')}

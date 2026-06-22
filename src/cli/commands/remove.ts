@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
+import { recordOperation } from '../../core/security.js';
 
 export const removeCommand = new Command('remove')
   .description('Remove a database instance')
@@ -47,6 +48,7 @@ export const removeCommand = new Command('remove')
 
       // Remove the database
       await dockerManager.removeDatabase(name, { keepData: options.keepData });
+      await recordOperation({ operation: 'remove', source: name, success: true });
 
       spinner.succeed(`Database '${name}' removed successfully`);
 
@@ -57,6 +59,12 @@ export const removeCommand = new Command('remove')
       console.log(chalk.yellow('💡 Run `hayai list` to see remaining databases'));
 
     } catch (error) {
+      await recordOperation({
+        operation: 'remove',
+        source: name,
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
       console.error(chalk.red('\n❌ Failed to remove database:'), error instanceof Error ? error.message : error);
       process.exit(1);
     }
