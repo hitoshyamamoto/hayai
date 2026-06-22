@@ -9,14 +9,14 @@ import { InitOptions } from '../../core/types.js';
 // Map technical types to user-friendly display names
 const getDisplayName = (type: string): string => {
   const displayNames: Record<string, string> = {
-    'sql': 'SQL',
-    'keyvalue': 'Key-Value',
-    'widecolumn': 'Wide Column',
-    'timeseries': 'Time Series',
-    'vector': 'Vector',
-    'graph': 'Graph',
-    'search': 'Search',
-    'embedded': 'Embedded',
+    sql: 'SQL',
+    keyvalue: 'Key-Value',
+    widecolumn: 'Wide Column',
+    timeseries: 'Time Series',
+    vector: 'Vector',
+    graph: 'Graph',
+    search: 'Search',
+    embedded: 'Embedded',
   };
   return displayNames[type] || type.toUpperCase();
 };
@@ -30,7 +30,7 @@ export const initCommand = new Command('init')
   .action(async (options: InitOptions) => {
     try {
       const spinner = ora('Initializing database...').start();
-      
+
       let config: {
         name: string;
         engine: string;
@@ -48,8 +48,8 @@ export const initCommand = new Command('init')
       } else {
         // Interactive mode
         spinner.stop();
-        console.log(chalk.cyan('\n🚀 Let\'s set up your database!\n'));
-        
+        console.log(chalk.cyan("\n🚀 Let's set up your database!\n"));
+
         const availableTypes = getAvailableTypes();
 
         const answers = await inquirer.prompt([
@@ -72,7 +72,7 @@ export const initCommand = new Command('init')
             type: 'list',
             name: 'type',
             message: 'What type of database do you need?',
-            choices: availableTypes.map(type => ({
+            choices: availableTypes.map((type) => ({
               name: `${getDisplayName(type)} (${getEnginesByType(type).join(', ')})`,
               value: type,
             })),
@@ -84,7 +84,7 @@ export const initCommand = new Command('init')
             message: 'Which database engine would you like to use?',
             choices: (answers: any) => {
               const engines = options.engine ? [options.engine] : getEnginesByType(answers.type);
-              return engines.map(engine => {
+              return engines.map((engine) => {
                 const template = getTemplate(engine);
                 return {
                   name: `${template?.name} (${template?.engine.image})`,
@@ -107,7 +107,7 @@ export const initCommand = new Command('init')
               }
               return true;
             },
-            filter: (input: string) => input ? parseInt(input) : undefined,
+            filter: (input: string) => (input ? parseInt(input) : undefined),
           },
         ]);
 
@@ -126,7 +126,7 @@ export const initCommand = new Command('init')
 
       // Create the database instance
       const createSpinner = ora(`Creating ${template.name} instance '${config.name}'...`).start();
-      
+
       const instance = await createDatabase(config.name, template, {
         port: config.port,
       });
@@ -141,18 +141,22 @@ export const initCommand = new Command('init')
       console.log(`  Port: ${chalk.cyan(instance.port)}`);
       console.log(`  Connection URI: ${chalk.cyan(instance.connection_uri)}`);
       console.log(`  Data Volume: ${chalk.gray(instance.volume)}`);
-      
+
       if (template.admin_dashboard?.enabled) {
-        console.log(`  Admin Dashboard: run ${chalk.cyan(`hayai studio ${instance.name}`)} once started`);
+        console.log(
+          `  Admin Dashboard: run ${chalk.cyan(`hayai studio ${instance.name}`)} once started`,
+        );
       }
 
       console.log(chalk.yellow('\n📋 Next Steps:'));
       console.log(`  1. Run ${chalk.cyan('hayai start')} to start your database`);
       console.log(`  2. Run ${chalk.cyan('hayai list')} to see all your databases`);
       console.log(`  3. Run ${chalk.cyan('hayai studio')} to open admin dashboards`);
-
     } catch (error) {
-      console.error(chalk.red('\n❌ Failed to initialize database:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to initialize database:'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
-  }); 
+  });

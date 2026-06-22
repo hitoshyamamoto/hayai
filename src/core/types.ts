@@ -44,7 +44,16 @@ export interface DatabaseSpec {
 
 export interface DatabaseEngine {
   name: string;
-  type: 'sql' | 'keyvalue' | 'widecolumn' | 'vector' | 'timeseries' | 'search' | 'graph' | 'embedded' | 'analytics';
+  type:
+    | 'sql'
+    | 'keyvalue'
+    | 'widecolumn'
+    | 'vector'
+    | 'timeseries'
+    | 'search'
+    | 'graph'
+    | 'embedded'
+    | 'analytics';
   version: string;
   image: string;
   ports: number[];
@@ -142,4 +151,4 @@ export type CommandResult = {
   success: boolean;
   message: string;
   data?: any;
-}; 
+};

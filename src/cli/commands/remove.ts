@@ -57,15 +57,17 @@ export const removeCommand = new Command('remove')
         console.log(chalk.yellow(`💡 Data volume kept at: ${instance.volume}`));
       }
       console.log(chalk.yellow('💡 Run `hayai list` to see remaining databases'));
-
     } catch (error) {
       await recordOperation({
         operation: 'remove',
         source: name,
         success: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
-      console.error(chalk.red('\n❌ Failed to remove database:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to remove database:'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
-  }); 
+  });

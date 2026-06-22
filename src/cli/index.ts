@@ -103,7 +103,9 @@ program
   .option('-q, --quiet', 'Suppress output except errors')
   .configureHelp({
     formatHelp: () => {
-      return helpText + `
+      return (
+        helpText +
+        `
 
 ${chalk.bold('COMMANDS')}
   ${chalk.cyan('init')}          Initialize a new database instance
@@ -129,8 +131,9 @@ ${chalk.bold('OPTIONS')}
   ${chalk.cyan('--verbose')}          Enable verbose logging
   ${chalk.cyan('-q, --quiet')}        Suppress output except errors
   ${chalk.cyan('-h, --help')}         Display help for command
-`;
-    }
+`
+      );
+    },
   })
   .hook('preAction', async () => {
     if (!program.opts().quiet) {
@@ -159,7 +162,9 @@ program.addCommand(securityCommand);
 program.on('command:*', (operands) => {
   console.error(chalk.red(`❌ Unknown command: ${operands[0]}`));
   console.log(chalk.yellow('💡 Run `hayai --help` for available commands'));
-  console.log(chalk.cyan('📚 See https://github.com/hitoshyamamoto/hayai#readme for documentation'));
+  console.log(
+    chalk.cyan('📚 See https://github.com/hitoshyamamoto/hayai#readme for documentation'),
+  );
   process.exit(1);
 });
 
@@ -209,4 +214,4 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-export default program; 
+export default program;

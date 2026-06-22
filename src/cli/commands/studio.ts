@@ -31,14 +31,14 @@ function openInBrowser(url: string): void {
 async function checkPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
-    
+
     server.listen(port, () => {
       server.once('close', () => {
         resolve(true); // Port is available
       });
       server.close();
     });
-    
+
     server.on('error', () => {
       resolve(false); // Port is in use
     });
@@ -49,7 +49,7 @@ export const studioCommand = new Command('studio')
   .description('Open admin dashboards for database instances')
   .argument('[name]', 'Database instance name (optional, opens all if not specified)')
   .option('-p, --port <port>', 'Custom port for dashboard', parseInt)
-  .option('--no-open', 'Don\'t automatically open browser')
+  .option('--no-open', "Don't automatically open browser")
   .option('--check-ports', 'Check if dashboard ports are accessible')
   .action(async (name?: string, options?) => {
     try {
@@ -57,10 +57,14 @@ export const studioCommand = new Command('studio')
       await dockerManager.initialize();
 
       const instances = name ? [dockerManager.getInstance(name)] : dockerManager.getAllInstances();
-      const validInstances = instances.filter(instance => instance !== undefined);
+      const validInstances = instances.filter((instance) => instance !== undefined);
 
       if (validInstances.length === 0) {
-        console.error(chalk.red(`❌ ${name ? `Database instance '${name}' not found` : 'No database instances found'}`));
+        console.error(
+          chalk.red(
+            `❌ ${name ? `Database instance '${name}' not found` : 'No database instances found'}`,
+          ),
+        );
         console.log(chalk.yellow(`💡 Create databases with: ${chalk.cyan('hayai init')}`));
         process.exit(1);
       }
@@ -71,42 +75,46 @@ export const studioCommand = new Command('studio')
 
       for (const instance of validInstances) {
         const template = getTemplate(instance.engine);
-        
+
         if (template?.admin_dashboard?.enabled && instance.port > 0) {
           // The dashboard is served by the database container itself, so it
           // lives on the instance's published host port.
           const dashboardPort = options.port || instance.port;
           const dashboardUrl = `http://localhost:${dashboardPort}${template.admin_dashboard.path || ''}`;
-          
+
           console.log(`${chalk.bold(instance.name)} (${template.name})`);
           console.log(`  Dashboard: ${chalk.cyan(dashboardUrl)}`);
-          console.log(`  Status: ${chalk[instance.status === 'running' ? 'green' : 'red'](instance.status)}`);
-          
+          console.log(
+            `  Status: ${chalk[instance.status === 'running' ? 'green' : 'red'](instance.status)}`,
+          );
+
           if (instance.status === 'running') {
             // Check if port is accessible if requested
             if (options.checkPorts) {
               const isPortAccessible = !(await checkPortAvailable(dashboardPort));
               if (isPortAccessible) {
                 console.log(`  Port: ${chalk.green('✅ Accessible')}`);
-                dashboardUrls.push({ 
-                  url: dashboardUrl, 
-                  name: instance.name, 
-                  engine: template.name 
+                dashboardUrls.push({
+                  url: dashboardUrl,
+                  name: instance.name,
+                  engine: template.name,
                 });
               } else {
                 console.log(`  Port: ${chalk.red('❌ Not accessible')}`);
                 console.log(`  ${chalk.yellow('⚠ Dashboard may still be starting up...')}`);
               }
             } else {
-              dashboardUrls.push({ 
-                url: dashboardUrl, 
-                name: instance.name, 
-                engine: template.name 
+              dashboardUrls.push({
+                url: dashboardUrl,
+                name: instance.name,
+                engine: template.name,
               });
             }
           } else {
             console.log(`  ${chalk.yellow('⚠ Database must be running to access dashboard')}`);
-            console.log(`  ${chalk.gray(`Start with: ${chalk.cyan(`hayai start ${instance.name}`)}`)}`);
+            console.log(
+              `  ${chalk.gray(`Start with: ${chalk.cyan(`hayai start ${instance.name}`)}`)}`,
+            );
           }
         } else {
           console.log(`${chalk.bold(instance.name)} (${template?.name || instance.engine})`);
@@ -117,18 +125,20 @@ export const studioCommand = new Command('studio')
 
       if (dashboardUrls.length > 0) {
         console.log(chalk.green('✅ Available Dashboards:'));
-        dashboardUrls.forEach(dashboard => {
-          console.log(`  🌐 ${chalk.cyan(dashboard.url)} ${chalk.gray(`(${dashboard.name} - ${dashboard.engine})`)}`);
+        dashboardUrls.forEach((dashboard) => {
+          console.log(
+            `  🌐 ${chalk.cyan(dashboard.url)} ${chalk.gray(`(${dashboard.name} - ${dashboard.engine})`)}`,
+          );
         });
 
         // Auto-open in browser unless disabled
         if (options.open !== false) {
           console.log(chalk.yellow('\n🚀 Opening dashboards in browser...'));
-          dashboardUrls.forEach(dashboard => {
+          dashboardUrls.forEach((dashboard) => {
             try {
               openInBrowser(dashboard.url);
               console.log(`  Opened: ${chalk.cyan(dashboard.name)} dashboard`);
-            } catch (error) {
+            } catch {
               console.log(`  ${chalk.red('Failed to open:')} ${dashboard.name} dashboard`);
             }
           });
@@ -138,23 +148,24 @@ export const studioCommand = new Command('studio')
         console.log('  • Use connection details from `hayai list` to connect');
         console.log('  • Add `--no-open` to prevent auto-opening browser');
         console.log('  • Add `--check-ports` to verify dashboard accessibility');
-
       } else {
         console.log(chalk.yellow('⚠ No dashboards available'));
         console.log(chalk.gray('Possible reasons:'));
         console.log(chalk.gray('  • Databases are not running - try `hayai start`'));
-        console.log(chalk.gray('  • Database engines don\'t have admin dashboards'));
+        console.log(chalk.gray("  • Database engines don't have admin dashboards"));
         console.log(chalk.gray('  • Dashboard containers are still starting up'));
-        
-        const stoppedInstances = validInstances.filter(i => i.status !== 'running');
+
+        const stoppedInstances = validInstances.filter((i) => i.status !== 'running');
         if (stoppedInstances.length > 0) {
           console.log(chalk.cyan('\n💡 Quick start all databases:'));
           console.log(`  ${chalk.cyan('hayai start')}`);
         }
       }
-
     } catch (error) {
-      console.error(chalk.red('\n❌ Failed to open studios:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('\n❌ Failed to open studios:'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
-  }); 
+  });

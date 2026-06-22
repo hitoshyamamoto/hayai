@@ -21,10 +21,7 @@ async function createSnapshotDirectory(dir: string): Promise<void> {
 
 const EMBEDDED_ENGINES = new Set(['sqlite', 'duckdb', 'leveldb', 'lmdb']);
 
-async function createSnapshot(
-  instance: any,
-  snapshotPath: string
-): Promise<void> {
+async function createSnapshot(instance: any, snapshotPath: string): Promise<void> {
   const template = getTemplate(instance.engine);
   if (!template) {
     throw new Error(`Template not found for engine: ${instance.engine}`);
@@ -63,14 +60,15 @@ async function createSnapshot(
 async function createPostgreSQLSnapshot(
   instanceName: string,
   snapshotPath: string,
-  environment: Record<string, string> = {}
+  environment: Record<string, string> = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const { user, database } = getPostgresExecCredentials(environment);
-    const dumpProcess = spawn('docker', [
-      'exec', `${instanceName}-db`,
-      'pg_dump', '-U', user, '-d', database, '--clean', '--create'
-    ], { stdio: ['inherit', 'pipe', 'pipe'] });
+    const dumpProcess = spawn(
+      'docker',
+      ['exec', `${instanceName}-db`, 'pg_dump', '-U', user, '-d', database, '--clean', '--create'],
+      { stdio: ['inherit', 'pipe', 'pipe'] },
+    );
 
     const writeStream = createWriteStream(snapshotPath);
     dumpProcess.stdout.pipe(writeStream);
@@ -87,14 +85,24 @@ async function createPostgreSQLSnapshot(
 async function createMariaDBSnapshot(
   instanceName: string,
   snapshotPath: string,
-  environment: Record<string, string> = {}
+  environment: Record<string, string> = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const rootPassword = getMariaDBRootPassword(environment);
-    const dumpProcess = spawn('docker', [
-      'exec', '-e', `MYSQL_PWD=${rootPassword}`, `${instanceName}-db`,
-      'mysqldump', '-u', 'root', '--all-databases'
-    ], { stdio: ['inherit', 'pipe', 'pipe'] });
+    const dumpProcess = spawn(
+      'docker',
+      [
+        'exec',
+        '-e',
+        `MYSQL_PWD=${rootPassword}`,
+        `${instanceName}-db`,
+        'mysqldump',
+        '-u',
+        'root',
+        '--all-databases',
+      ],
+      { stdio: ['inherit', 'pipe', 'pipe'] },
+    );
 
     const writeStream = createWriteStream(snapshotPath);
     dumpProcess.stdout.pipe(writeStream);
@@ -111,9 +119,7 @@ async function createMariaDBSnapshot(
 async function createRedisSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Create RDB backup
-    const bgsaveProcess = spawn('docker', [
-      'exec', `${instanceName}-db`, 'redis-cli', 'BGSAVE'
-    ]);
+    const bgsaveProcess = spawn('docker', ['exec', `${instanceName}-db`, 'redis-cli', 'BGSAVE']);
 
     bgsaveProcess.on('close', async (code) => {
       if (code !== 0) {
@@ -122,11 +128,13 @@ async function createRedisSnapshot(instanceName: string, snapshotPath: string): 
       }
 
       // Wait for backup to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Copy RDB file
       const copyProcess = spawn('docker', [
-        'cp', `${instanceName}-db:/data/dump.rdb`, snapshotPath
+        'cp',
+        `${instanceName}-db:/data/dump.rdb`,
+        snapshotPath,
       ]);
 
       copyProcess.on('close', (copyCode) => {
@@ -143,8 +151,11 @@ async function createRedisSnapshot(instanceName: string, snapshotPath: string): 
 async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const backupProcess = spawn('docker', [
-      'exec', `${instanceName}-db`,
-      'influx', 'backup', '/tmp/backup'
+      'exec',
+      `${instanceName}-db`,
+      'influx',
+      'backup',
+      '/tmp/backup',
     ]);
 
     backupProcess.on('close', async (code) => {
@@ -155,8 +166,12 @@ async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string
 
       // Create tar archive
       const tarProcess = spawn('docker', [
-        'exec', `${instanceName}-db`,
-        'tar', '-czf', '/tmp/influx-backup.tar.gz', '/tmp/backup'
+        'exec',
+        `${instanceName}-db`,
+        'tar',
+        '-czf',
+        '/tmp/influx-backup.tar.gz',
+        '/tmp/backup',
       ]);
 
       tarProcess.on('close', (tarCode) => {
@@ -167,7 +182,9 @@ async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string
 
         // Copy to host
         const copyProcess = spawn('docker', [
-          'cp', `${instanceName}-db:/tmp/influx-backup.tar.gz`, snapshotPath
+          'cp',
+          `${instanceName}-db:/tmp/influx-backup.tar.gz`,
+          snapshotPath,
         ]);
 
         copyProcess.on('close', (copyCode) => {
@@ -199,8 +216,12 @@ async function createEmbeddedSnapshot(volumePath: string, snapshotPath: string):
 async function createGenericSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const backupProcess = spawn('docker', [
-      'exec', `${instanceName}-db`,
-      'tar', '-czf', '/tmp/backup.tar.gz', '/data'
+      'exec',
+      `${instanceName}-db`,
+      'tar',
+      '-czf',
+      '/tmp/backup.tar.gz',
+      '/data',
     ]);
 
     backupProcess.on('close', (code) => {
@@ -210,7 +231,9 @@ async function createGenericSnapshot(instanceName: string, snapshotPath: string)
       }
 
       const copyProcess = spawn('docker', [
-        'cp', `${instanceName}-db:/tmp/backup.tar.gz`, snapshotPath
+        'cp',
+        `${instanceName}-db:/tmp/backup.tar.gz`,
+        snapshotPath,
       ]);
 
       copyProcess.on('close', (copyCode) => {
@@ -226,10 +249,7 @@ async function createGenericSnapshot(instanceName: string, snapshotPath: string)
 
 async function createCassandraSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const snapshotProcess = spawn('docker', [
-      'exec', `${instanceName}-db`,
-      'nodetool', 'snapshot'
-    ]);
+    const snapshotProcess = spawn('docker', ['exec', `${instanceName}-db`, 'nodetool', 'snapshot']);
 
     snapshotProcess.on('close', (code) => {
       if (code !== 0) {
@@ -238,8 +258,12 @@ async function createCassandraSnapshot(instanceName: string, snapshotPath: strin
       }
 
       const copyProcess = spawn('docker', [
-        'exec', `${instanceName}-db`,
-        'tar', '-czf', '/tmp/cassandra-snapshot.tar.gz', '/var/lib/cassandra/data'
+        'exec',
+        `${instanceName}-db`,
+        'tar',
+        '-czf',
+        '/tmp/cassandra-snapshot.tar.gz',
+        '/var/lib/cassandra/data',
       ]);
 
       copyProcess.on('close', (tarCode) => {
@@ -249,7 +273,9 @@ async function createCassandraSnapshot(instanceName: string, snapshotPath: strin
         }
 
         const finalCopyProcess = spawn('docker', [
-          'cp', `${instanceName}-db:/tmp/cassandra-snapshot.tar.gz`, snapshotPath
+          'cp',
+          `${instanceName}-db:/tmp/cassandra-snapshot.tar.gz`,
+          snapshotPath,
         ]);
 
         finalCopyProcess.on('close', (copyCode) => {
@@ -278,13 +304,13 @@ function snapshotExtension(engine: string): string {
 // the snapshot command and by `merge --backup-both`.
 export async function snapshotInstance(
   instance: DatabaseInstance,
-  outputDir = './snapshots'
+  outputDir = './snapshots',
 ): Promise<string> {
   await createSnapshotDirectory(outputDir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const snapshotPath = path.join(
     outputDir,
-    `${instance.name}-snapshot-${timestamp}.${snapshotExtension(instance.engine)}`
+    `${instance.name}-snapshot-${timestamp}.${snapshotExtension(instance.engine)}`,
   );
   await createSnapshot(instance, snapshotPath);
   return snapshotPath;
@@ -328,7 +354,7 @@ export const snapshotCommand = new Command('snapshot')
           operation: 'snapshot',
           source: name,
           success: false,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
         throw error;
       }
@@ -337,16 +363,25 @@ export const snapshotCommand = new Command('snapshot')
       const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
       spinner.succeed(`Snapshot created successfully (${fileSizeMB} MB)`);
-      await recordOperation({ operation: 'snapshot', source: name, target: snapshotPath, success: true });
+      await recordOperation({
+        operation: 'snapshot',
+        source: name,
+        target: snapshotPath,
+        success: true,
+      });
 
       console.log(chalk.gray(`Output: ${snapshotPath}`));
       console.log(chalk.green('\n✅ Snapshot completed!'));
       console.log(chalk.yellow('💡 Commands:'));
       console.log(`  • ${chalk.cyan('hayai snapshot list')} - View all snapshots`);
-      console.log(`  • ${chalk.cyan(`hayai restore ${path.basename(snapshotPath)}`)} - Restore this snapshot`);
-
+      console.log(
+        `  • ${chalk.cyan(`hayai restore ${path.basename(snapshotPath)}`)} - Restore this snapshot`,
+      );
     } catch (error) {
-      console.error(chalk.red('❌ Snapshot failed:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('❌ Snapshot failed:'),
+        error instanceof Error ? error.message : error,
+      );
       process.exit(1);
     }
   });
@@ -359,7 +394,7 @@ snapshotCommand
   .action(async (options) => {
     try {
       const snapshotsDir = path.resolve(options.directory);
-      
+
       try {
         await fs.access(snapshotsDir);
       } catch {
@@ -369,9 +404,10 @@ snapshotCommand
       }
 
       const files = await fs.readdir(snapshotsDir);
-      const snapshotFiles = files.filter(file => 
-        file.includes('-snapshot-') && 
-        (file.endsWith('.sql') || file.endsWith('.rdb') || file.endsWith('.tar.gz'))
+      const snapshotFiles = files.filter(
+        (file) =>
+          file.includes('-snapshot-') &&
+          (file.endsWith('.sql') || file.endsWith('.rdb') || file.endsWith('.tar.gz')),
       );
 
       if (snapshotFiles.length === 0) {
@@ -388,7 +424,7 @@ snapshotCommand
           const filePath = path.join(snapshotsDir, file);
           const stats = await fs.stat(filePath);
           const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
-          
+
           const dbName = file.split('-snapshot-')[0];
           const format = file.endsWith('.tar.gz') ? 'tar.gz' : path.extname(file).slice(1);
 
@@ -399,15 +435,15 @@ snapshotCommand
             // file's mtime is the reliable creation record.
             timestamp: stats.mtime,
             size: sizeMB,
-            format
+            format,
           };
-        })
+        }),
       );
 
       // Sort by timestamp (newest first)
       snapshots.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-      snapshots.forEach(snapshot => {
+      snapshots.forEach((snapshot) => {
         console.log(`📸 ${chalk.bold(snapshot.file)}`);
         console.log(`   Database: ${chalk.cyan(snapshot.dbName)}`);
         console.log(`   Created:  ${chalk.gray(snapshot.timestamp.toLocaleString())}`);
@@ -419,9 +455,11 @@ snapshotCommand
       console.log(chalk.yellow('💡 Commands:'));
       console.log(`  • ${chalk.cyan('hayai snapshot <name>')} - Create new snapshot`);
       console.log(`  • ${chalk.cyan('hayai snapshot clean')} - Remove old snapshots`);
-
     } catch (error) {
-      console.error(chalk.red('❌ Failed to list snapshots:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('❌ Failed to list snapshots:'),
+        error instanceof Error ? error.message : error,
+      );
     }
   });
 
@@ -434,7 +472,7 @@ snapshotCommand
   .action(async (options) => {
     try {
       const snapshotsDir = path.resolve(options.directory);
-      
+
       try {
         await fs.access(snapshotsDir);
       } catch {
@@ -443,9 +481,10 @@ snapshotCommand
       }
 
       const files = await fs.readdir(snapshotsDir);
-      const snapshotFiles = files.filter(file => 
-        file.includes('-snapshot-') && 
-        (file.endsWith('.sql') || file.endsWith('.rdb') || file.endsWith('.tar.gz'))
+      const snapshotFiles = files.filter(
+        (file) =>
+          file.includes('-snapshot-') &&
+          (file.endsWith('.sql') || file.endsWith('.rdb') || file.endsWith('.tar.gz')),
       );
 
       if (snapshotFiles.length === 0) {
@@ -455,8 +494,8 @@ snapshotCommand
 
       // Group by database name
       const snapshotsByDb: Record<string, string[]> = {};
-      
-      snapshotFiles.forEach(file => {
+
+      snapshotFiles.forEach((file) => {
         const dbName = file.split('-snapshot-')[0];
         if (!snapshotsByDb[dbName]) {
           snapshotsByDb[dbName] = [];
@@ -476,10 +515,12 @@ snapshotCommand
         });
 
         const toDelete = snapshots.slice(keepCount);
-        
+
         if (toDelete.length > 0) {
-          console.log(chalk.yellow(`🗑️  Cleaning ${dbName}: removing ${toDelete.length} old snapshots`));
-          
+          console.log(
+            chalk.yellow(`🗑️  Cleaning ${dbName}: removing ${toDelete.length} old snapshots`),
+          );
+
           for (const file of toDelete) {
             await fs.unlink(path.join(snapshotsDir, file));
             console.log(chalk.gray(`   Deleted: ${file}`));
@@ -493,8 +534,10 @@ snapshotCommand
       } else {
         console.log(chalk.green(`✅ Cleaned ${totalDeleted} old snapshots`));
       }
-
     } catch (error) {
-      console.error(chalk.red('❌ Failed to clean snapshots:'), error instanceof Error ? error.message : error);
+      console.error(
+        chalk.red('❌ Failed to clean snapshots:'),
+        error instanceof Error ? error.message : error,
+      );
     }
-  }); 
+  });
