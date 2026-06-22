@@ -7,42 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- `hayai connect <name>` prints an instance's connection details. `--uri` emits
-  just the URI for scripting (`export DATABASE_URL=$(hayai connect mydb --uri)`)
-  and `--json` emits the structured form.
-- `init` warns when an engine is experimental. TiKV, Milvus, and NebulaGraph are
-  flagged: hayai runs them as a single container, but they need a multi-node
-  cluster to be dependable.
-
-### Changed
-- The decorative banner now prints to stderr, so data commands keep stdout clean
-  and pipeable (`connect --uri`, `list --format json`).
-- **Minimum Node.js is now 22.13** (was 18). Node 18 and 20 are both end-of-life;
-  the runtime dependency bumps below require Node 22+. CI now tests Node 22 and 24.
-- Update runtime dependencies: `commander` 12 → 15, `inquirer` 9 → 14 (drops the
-  obsolete `@types/inquirer`; the package ships its own types), `ora` 8 → 9,
-  `chalk` 5.4 → 5.6.
-- Update tooling: ESLint 9 → 10, Jest 29 → 30, and the supporting `@types`/tsx
-  packages. Pin `actions/checkout` to v7. TypeScript stays on 5.x while
-  typescript-eslint catches up to 6.
-
 ## [0.8.0] - 2026-06-22
+
+A large pass that makes the commands do what they claim, hardens the toolchain
+and release pipeline, and modernizes the dependency stack.
 
 ### Added
 - `hayai restore <snapshot>` closes the snapshot loop: replays SQL dumps
   (PostgreSQL, TimescaleDB, MariaDB), swaps the RDB for Redis, and extracts the
   data directory for embedded engines. Snapshot-only engines are refused with
   pointers to their native restore tooling.
+- `hayai connect <name>` prints an instance's connection details. `--uri` emits
+  just the URI for scripting (`export DATABASE_URL=$(hayai connect mydb --uri)`)
+  and `--json` emits the structured form.
 - Audit logging is enforced: `clone`, `merge`, `snapshot`, `restore`, and
   `remove` append to `.hayai/audit.log` when `auditOperations` is enabled
   (default), so `hayai security --audit` reflects real activity.
-- CI runs lint, a Node 18/20/22 test matrix, a compiled-CLI smoke test, a
-  packaging dry-run, and a dependency audit, with all actions pinned by commit SHA.
-- CodeQL static analysis (`security-and-quality`) on push, pull request, and weekly.
-- Dependabot for npm and GitHub Actions, grouped to keep update noise down.
+- `init` warns when an engine is experimental. TiKV, Milvus, and NebulaGraph are
+  flagged: hayai runs them as a single container, but they need a multi-node
+  cluster to be dependable.
+- A typed programmatic entry point (`main`/`types`/`exports` and `src/index.ts`),
+  so `hayai-db` exposes the engine catalog, types, and managers as a library —
+  and the previously dangling `main` now resolves.
+- CI runs lint, a format check, a Node 22/24 test matrix, a compiled-CLI smoke
+  test, a packaging dry-run, and a dependency audit, with every action pinned by
+  commit SHA. Added CodeQL (`security-and-quality`) and grouped Dependabot.
 
 ### Changed
+- **Requires Node.js 22.13+** (0.7.1 required 18). Node 18 and 20 are both
+  end-of-life and the runtime dependency updates below need Node 22+.
+- Update runtime dependencies: `commander` 12 → 15, `inquirer` 9 → 14 (drops the
+  obsolete `@types/inquirer`), `ora` 8 → 9, `chalk` 5.4 → 5.6. `clone`'s
+  multi-target flag is now `--tm` (was `-tm`) — commander 15 rejects
+  multi-character short flags.
+- Update tooling: ESLint 8 → 10 on flat config, Jest 29 → 30, Prettier added and
+  enforced in CI, plus the supporting `@types`/tsx packages. TypeScript stays on
+  5.x until typescript-eslint supports 6.
+- The decorative banner now prints to stderr, so data commands keep stdout clean
+  and pipeable (`connect --uri`, `list --format json`).
 - `merge --backup-both` now actually snapshots both databases before the merge
   and aborts if either backup fails.
 - Release workflow split into build → publish → GitHub Release. The tarball that
