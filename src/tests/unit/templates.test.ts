@@ -2,9 +2,9 @@ import { describe, it, expect } from '@jest/globals';
 import { DatabaseTemplates, getEngineTier } from '../../core/templates.js';
 
 describe('DatabaseTemplates - Basic Validation', () => {
-  it('should return all 22 configured databases', () => {
+  it('should return all 30 configured databases', () => {
     const templates = DatabaseTemplates.getAllTemplates();
-    expect(templates.size).toBe(22);
+    expect(templates.size).toBe(30);
   });
 
   it('should have valid structure for all templates', () => {
@@ -28,10 +28,11 @@ describe('DatabaseTemplates - Basic Validation', () => {
     expect(timeseriesEngines).toContain('timescaledb');
   });
 
-  it('should include all 3 key-value databases', () => {
+  it('should include all 4 key-value databases', () => {
     const keyValueEngines = DatabaseTemplates.getEnginesByType('keyvalue');
-    expect(keyValueEngines).toHaveLength(3);
+    expect(keyValueEngines).toHaveLength(4);
     expect(keyValueEngines).toContain('redis');
+    expect(keyValueEngines).toContain('valkey');
     expect(keyValueEngines).toContain('leveldb');
     expect(keyValueEngines).toContain('tikv');
   });
@@ -43,10 +44,27 @@ describe('DatabaseTemplates - Basic Validation', () => {
     expect(embeddedEngines).toContain('lmdb');
   });
 
-  it('should include 1 analytics database', () => {
+  it('should include all 2 analytics databases', () => {
     const analyticsEngines = DatabaseTemplates.getEnginesByType('analytics');
-    expect(analyticsEngines).toHaveLength(1);
+    expect(analyticsEngines).toHaveLength(2);
     expect(analyticsEngines).toContain('duckdb');
+    expect(analyticsEngines).toContain('clickhouse');
+  });
+
+  it('should include all 2 document databases', () => {
+    const documentEngines = DatabaseTemplates.getEnginesByType('document');
+    expect(documentEngines).toHaveLength(2);
+    expect(documentEngines).toContain('couchdb');
+    expect(documentEngines).toContain('mongodb');
+  });
+
+  it('flags mongodb (and only timescaledb besides it) as not fully open source', () => {
+    const info = DatabaseTemplates.getOpenSourceInfo();
+    const sourceAvailable = Object.entries(info)
+      .filter(([, engine]) => !engine.fullyOpenSource)
+      .map(([key]) => key)
+      .sort();
+    expect(sourceAvailable).toEqual(['mongodb', 'timescaledb']);
   });
 
   it('should include 1 wide column database', () => {
@@ -68,10 +86,12 @@ describe('DatabaseTemplates - Basic Validation', () => {
       'leveldb',
       'lmdb',
       'mariadb',
+      'mysql',
       'postgresql',
       'redis',
       'sqlite',
       'timescaledb',
+      'valkey',
     ]);
 
     // Unknown engines never get promoted by accident
