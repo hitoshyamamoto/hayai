@@ -38,8 +38,8 @@ jobs:
       - name: Format check
         run: npm run format:check
 
-  # Build + test across the supported Node range. 18 is the declared floor
-  # (package.json engines); 22 is current LTS.
+  # Build + test across the supported Node range. 22 is the declared floor
+  # (package.json engines); 24 is current LTS.
   test:
     name: Test (Node ${{ matrix.node-version }})
     needs: quality
@@ -78,6 +78,28 @@ jobs:
           name: coverage
           path: coverage/
           retention-days: 14
+
+  # End-to-end verification of the data verbs (init/start/snapshot/restore/
+  # clone/merge) against real containers for the Tier 1 engines. This is the
+  # trust contract: a green badge means the verbs actually work, not just that
+  # the code compiles. Single job (no matrix) — the suite exercises Docker,
+  # not Node semantics.
+  integration:
+    name: Integration (Tier 1 engines)
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run integration suite
+        run: npm run test:integration
 
   # Catch packaging regressions (missing files, bad bin path) before a tag
   # turns them into a broken npm release.
