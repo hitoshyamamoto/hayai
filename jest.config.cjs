@@ -5,6 +5,9 @@ module.exports = {
   
   // Simple test pattern - just look for .test.ts files
   testMatch: ['**/*.test.ts'],
+
+  // Integration tests need Docker and run via jest.integration.config.cjs
+  testPathIgnorePatterns: ['/node_modules/', '/src/tests/integration/'],
   
   // TypeScript transformation
   transform: {
