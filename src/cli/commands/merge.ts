@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
+import { composeServiceName, resolveServiceContainer } from '../../core/containers.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { recordOperation } from '../../core/security.js';
 import { snapshotInstance } from './snapshot.js';
@@ -45,7 +46,9 @@ async function previewMerge(sourceInstance: any, targetInstance: any): Promise<v
   console.log(chalk.yellow('\n⚠️  Warning:'));
   console.log('  • This operation is irreversible without backups');
   console.log('  • Source and target must run the same supported engine');
-  console.log('  • Data conflicts may need manual resolution');
+  console.log(
+    '  • On key conflicts: PostgreSQL/MariaDB keep the target row; Redis takes the source value',
+  );
 
   console.log(chalk.bold('\nNext Steps:'));
   console.log(`  • Run with ${chalk.cyan('--execute')} to perform the merge`);
@@ -53,8 +56,11 @@ async function previewMerge(sourceInstance: any, targetInstance: any): Promise<v
 }
 
 async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise<void> {
-  const sourceContainer = `${sourceInstance.name}-db`;
-  const targetContainer = `${targetInstance.name}-db`;
+  // Compose names containers '<project>-<service>-<n>'; resolve the real ones
+  // before any docker exec. Network DNS is a different namespace: there the
+  // plain service name still applies (see mergeRedis).
+  const sourceContainer = await resolveServiceContainer(sourceInstance.name);
+  const targetContainer = await resolveServiceContainer(targetInstance.name);
 
   console.log(chalk.cyan(`🔄 Merging ${sourceInstance.name} → ${targetInstance.name}...`));
 
@@ -76,7 +82,7 @@ async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise
       );
       break;
     case 'redis':
-      await mergeRedis(sourceContainer, targetContainer);
+      await mergeRedis(sourceContainer, composeServiceName(targetInstance.name));
       break;
     default:
       // Unreachable: handleMerge validates the engine before calling here.
@@ -97,12 +103,25 @@ async function mergePostgreSQL(
   console.log(chalk.yellow('🔄 Merging PostgreSQL databases...'));
 
   return new Promise((resolve, reject) => {
-    // Simplified merge - in real implementation would be more sophisticated
     const source = getPostgresExecCredentials(sourceEnv);
     const target = getPostgresExecCredentials(targetEnv);
+    // --inserts is load-bearing: the default COPY format is all-or-nothing per
+    // table, so one key collision with existing target rows would discard the
+    // whole table's data. Row-per-INSERT lets conflicting rows fail
+    // individually (target wins) while everything else merges.
     const dumpProcess = spawn(
       'docker',
-      ['exec', sourceContainer, 'pg_dump', '-U', source.user, '-d', source.database, '--data-only'],
+      [
+        'exec',
+        sourceContainer,
+        'pg_dump',
+        '-U',
+        source.user,
+        '-d',
+        source.database,
+        '--data-only',
+        '--inserts',
+      ],
       { stdio: ['inherit', 'pipe', 'pipe'] },
     );
 
@@ -158,7 +177,8 @@ async function mergeMariaDB(
         '-e',
         `MYSQL_PWD=${getMariaDBRootPassword(sourceEnv)}`,
         sourceContainer,
-        'mysqldump',
+        // mariadb:11 images ship only the mariadb-* client names
+        'mariadb-dump',
         '-u',
         'root',
         '--no-create-info',
@@ -176,7 +196,7 @@ async function mergeMariaDB(
         '-e',
         `MYSQL_PWD=${getMariaDBRootPassword(targetEnv)}`,
         targetContainer,
-        'mysql',
+        'mariadb',
         '-u',
         'root',
         '--force',
@@ -196,7 +216,7 @@ async function mergeMariaDB(
   });
 }
 
-async function mergeRedis(sourceContainer: string, targetContainer: string): Promise<void> {
+async function mergeRedis(sourceContainer: string, targetServiceHost: string): Promise<void> {
   console.log(chalk.yellow('🔄 Merging Redis databases...'));
 
   // SCAN instead of KEYS — KEYS blocks the server on large datasets
@@ -208,10 +228,11 @@ async function mergeRedis(sourceContainer: string, targetContainer: string): Pro
   // MIGRATE moves each value container-to-container over the shared compose
   // network, preserving binary data — piping DUMP output through a text
   // pipeline corrupts it. COPY keeps the source intact; REPLACE resolves
-  // conflicts in favor of the source.
+  // conflicts in favor of the source. The target is addressed by its compose
+  // service name, which doubles as its DNS name on the shared network.
   const failed: string[] = [];
   for (const key of keys) {
-    const ok = await migrateRedisKey(sourceContainer, targetContainer, key);
+    const ok = await migrateRedisKey(sourceContainer, targetServiceHost, key);
     if (!ok) {
       failed.push(key);
     }
@@ -254,17 +275,16 @@ async function scanRedisKeys(container: string): Promise<string[]> {
 
 async function migrateRedisKey(
   sourceContainer: string,
-  targetContainer: string,
+  targetServiceHost: string,
   key: string,
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    // The compose service name doubles as the DNS name on the shared network.
     const migrateProcess = spawn('docker', [
       'exec',
       sourceContainer,
       'redis-cli',
       'MIGRATE',
-      targetContainer,
+      targetServiceHost,
       '6379',
       key,
       '0',
@@ -447,7 +467,8 @@ ${chalk.bold('Examples:')}
 ${chalk.bold('How Merge Works:')}
   • Data from the source is copied into the target
   • The source database is left unchanged
-  • Conflicts are resolved in favor of the source when possible
+  • Key conflicts: PostgreSQL/MariaDB keep the target's row; Redis replaces
+    the key with the source's value (MIGRATE … REPLACE)
 
 ${chalk.bold('Supported Engines (same engine on both sides):')}
   • PostgreSQL, MariaDB: SQL-level merging (data-only)
