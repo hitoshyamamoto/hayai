@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
 import { getDockerManager } from '../../core/docker.js';
+import { resolveServiceContainer } from '../../core/containers.js';
 import { getTemplate } from '../../core/templates.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { recordOperation } from '../../core/security.js';
@@ -33,32 +34,36 @@ async function createSnapshot(instance: any, snapshotPath: string): Promise<void
     return;
   }
 
+  // Compose names containers '<project>-<service>-<n>'; resolve the real one
+  // before any docker exec/cp.
+  const container = await resolveServiceContainer(instance.name);
+
   // Choose appropriate backup method based on database type
   switch (instance.engine) {
     case 'postgresql':
     case 'timescaledb':
-      await createPostgreSQLSnapshot(instance.name, snapshotPath, instance.environment);
+      await createPostgreSQLSnapshot(container, snapshotPath, instance.environment);
       break;
     case 'mariadb':
-      await createMariaDBSnapshot(instance.name, snapshotPath, instance.environment);
+      await createMariaDBSnapshot(container, snapshotPath, instance.environment);
       break;
     case 'redis':
-      await createRedisSnapshot(instance.name, snapshotPath);
+      await createRedisSnapshot(container, snapshotPath);
       break;
     case 'influxdb2':
     case 'influxdb3':
-      await createInfluxDBSnapshot(instance.name, snapshotPath);
+      await createInfluxDBSnapshot(container, snapshotPath);
       break;
     case 'cassandra':
-      await createCassandraSnapshot(instance.name, snapshotPath);
+      await createCassandraSnapshot(container, snapshotPath);
       break;
     default:
-      await createGenericSnapshot(instance.name, snapshotPath);
+      await createGenericSnapshot(container, snapshotPath);
   }
 }
 
 async function createPostgreSQLSnapshot(
-  instanceName: string,
+  container: string,
   snapshotPath: string,
   environment: Record<string, string> = {},
 ): Promise<void> {
@@ -66,7 +71,7 @@ async function createPostgreSQLSnapshot(
     const { user, database } = getPostgresExecCredentials(environment);
     const dumpProcess = spawn(
       'docker',
-      ['exec', `${instanceName}-db`, 'pg_dump', '-U', user, '-d', database, '--clean', '--create'],
+      ['exec', container, 'pg_dump', '-U', user, '-d', database, '--clean', '--create'],
       { stdio: ['inherit', 'pipe', 'pipe'] },
     );
 
@@ -83,7 +88,7 @@ async function createPostgreSQLSnapshot(
 }
 
 async function createMariaDBSnapshot(
-  instanceName: string,
+  container: string,
   snapshotPath: string,
   environment: Record<string, string> = {},
 ): Promise<void> {
@@ -95,8 +100,10 @@ async function createMariaDBSnapshot(
         'exec',
         '-e',
         `MYSQL_PWD=${rootPassword}`,
-        `${instanceName}-db`,
-        'mysqldump',
+        container,
+        // mariadb:11 images ship only the mariadb-* client names; the mysql*
+        // compatibility symlinks are gone.
+        'mariadb-dump',
         '-u',
         'root',
         '--all-databases',
@@ -116,10 +123,10 @@ async function createMariaDBSnapshot(
   });
 }
 
-async function createRedisSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
+async function createRedisSnapshot(container: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Create RDB backup
-    const bgsaveProcess = spawn('docker', ['exec', `${instanceName}-db`, 'redis-cli', 'BGSAVE']);
+    const bgsaveProcess = spawn('docker', ['exec', container, 'redis-cli', 'BGSAVE']);
 
     bgsaveProcess.on('close', async (code) => {
       if (code !== 0) {
@@ -131,11 +138,7 @@ async function createRedisSnapshot(instanceName: string, snapshotPath: string): 
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Copy RDB file
-      const copyProcess = spawn('docker', [
-        'cp',
-        `${instanceName}-db:/data/dump.rdb`,
-        snapshotPath,
-      ]);
+      const copyProcess = spawn('docker', ['cp', `${container}:/data/dump.rdb`, snapshotPath]);
 
       copyProcess.on('close', (copyCode) => {
         copyCode === 0 ? resolve() : reject(new Error('Failed to copy Redis snapshot'));
@@ -148,15 +151,9 @@ async function createRedisSnapshot(instanceName: string, snapshotPath: string): 
   });
 }
 
-async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
+async function createInfluxDBSnapshot(container: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const backupProcess = spawn('docker', [
-      'exec',
-      `${instanceName}-db`,
-      'influx',
-      'backup',
-      '/tmp/backup',
-    ]);
+    const backupProcess = spawn('docker', ['exec', container, 'influx', 'backup', '/tmp/backup']);
 
     backupProcess.on('close', async (code) => {
       if (code !== 0) {
@@ -167,7 +164,7 @@ async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string
       // Create tar archive
       const tarProcess = spawn('docker', [
         'exec',
-        `${instanceName}-db`,
+        container,
         'tar',
         '-czf',
         '/tmp/influx-backup.tar.gz',
@@ -183,7 +180,7 @@ async function createInfluxDBSnapshot(instanceName: string, snapshotPath: string
         // Copy to host
         const copyProcess = spawn('docker', [
           'cp',
-          `${instanceName}-db:/tmp/influx-backup.tar.gz`,
+          `${container}:/tmp/influx-backup.tar.gz`,
           snapshotPath,
         ]);
 
@@ -213,11 +210,11 @@ async function createEmbeddedSnapshot(volumePath: string, snapshotPath: string):
   });
 }
 
-async function createGenericSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
+async function createGenericSnapshot(container: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const backupProcess = spawn('docker', [
       'exec',
-      `${instanceName}-db`,
+      container,
       'tar',
       '-czf',
       '/tmp/backup.tar.gz',
@@ -230,11 +227,7 @@ async function createGenericSnapshot(instanceName: string, snapshotPath: string)
         return;
       }
 
-      const copyProcess = spawn('docker', [
-        'cp',
-        `${instanceName}-db:/tmp/backup.tar.gz`,
-        snapshotPath,
-      ]);
+      const copyProcess = spawn('docker', ['cp', `${container}:/tmp/backup.tar.gz`, snapshotPath]);
 
       copyProcess.on('close', (copyCode) => {
         copyCode === 0 ? resolve() : reject(new Error('Failed to copy generic snapshot'));
@@ -247,9 +240,9 @@ async function createGenericSnapshot(instanceName: string, snapshotPath: string)
   });
 }
 
-async function createCassandraSnapshot(instanceName: string, snapshotPath: string): Promise<void> {
+async function createCassandraSnapshot(container: string, snapshotPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const snapshotProcess = spawn('docker', ['exec', `${instanceName}-db`, 'nodetool', 'snapshot']);
+    const snapshotProcess = spawn('docker', ['exec', container, 'nodetool', 'snapshot']);
 
     snapshotProcess.on('close', (code) => {
       if (code !== 0) {
@@ -259,7 +252,7 @@ async function createCassandraSnapshot(instanceName: string, snapshotPath: strin
 
       const copyProcess = spawn('docker', [
         'exec',
-        `${instanceName}-db`,
+        container,
         'tar',
         '-czf',
         '/tmp/cassandra-snapshot.tar.gz',
@@ -274,7 +267,7 @@ async function createCassandraSnapshot(instanceName: string, snapshotPath: strin
 
         const finalCopyProcess = spawn('docker', [
           'cp',
-          `${instanceName}-db:/tmp/cassandra-snapshot.tar.gz`,
+          `${container}:/tmp/cassandra-snapshot.tar.gz`,
           snapshotPath,
         ]);
 

@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import { getDockerManager } from '../../core/docker.js';
+import { resolveServiceContainer } from '../../core/containers.js';
 import { getTemplate } from '../../core/templates.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { recordOperation } from '../../core/security.js';
@@ -124,14 +125,16 @@ async function executeClone(sourceInstance: any, targetName: string): Promise<vo
 }
 
 async function cloneData(source: any, target: any): Promise<void> {
-  const sourceContainer = `${source.name}-db`;
-  const targetContainer = `${target.name}-db`;
-
   if (EMBEDDED_ENGINES.has(source.engine)) {
     // Embedded engines are host files — copy the data directory directly
     await cp(source.volume, target.volume, { recursive: true, force: true });
     return;
   }
+
+  // Compose names containers '<project>-<service>-<n>'; resolve the real ones
+  // before any docker exec/cp.
+  const sourceContainer = await resolveServiceContainer(source.name);
+  const targetContainer = await resolveServiceContainer(target.name);
 
   switch (source.engine) {
     case 'postgresql':
@@ -141,7 +144,7 @@ async function cloneData(source: any, target: any): Promise<void> {
       await cloneMariaDB(sourceContainer, targetContainer, source.environment);
       break;
     case 'redis':
-      await cloneRedis(sourceContainer, targetContainer);
+      await cloneRedis(sourceContainer, targetContainer, target.name);
       break;
     default:
       // This situation should never happen due to compatibility validation
@@ -199,7 +202,8 @@ async function cloneMariaDB(
         '-e',
         `MYSQL_PWD=${rootPassword}`,
         sourceContainer,
-        'mysqldump',
+        // mariadb:11 images ship only the mariadb-* client names
+        'mariadb-dump',
         '-u',
         'root',
         ...dumpTarget,
@@ -209,7 +213,7 @@ async function cloneMariaDB(
 
     const restoreProcess = spawn(
       'docker',
-      ['exec', '-i', '-e', `MYSQL_PWD=${rootPassword}`, targetContainer, 'mysql', '-u', 'root'],
+      ['exec', '-i', '-e', `MYSQL_PWD=${rootPassword}`, targetContainer, 'mariadb', '-u', 'root'],
       { stdio: ['pipe', 'inherit', 'pipe'] },
     );
 
@@ -224,64 +228,38 @@ async function cloneMariaDB(
   });
 }
 
-async function cloneRedis(sourceContainer: string, targetContainer: string): Promise<void> {
+function runDockerStep(args: string[], failureMessage: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Create RDB backup
-    const bgsaveProcess = spawn('docker', ['exec', sourceContainer, 'redis-cli', 'BGSAVE']);
-
-    bgsaveProcess.on('close', async (code) => {
-      if (code !== 0) {
-        reject(new Error('Redis backup failed'));
-        return;
-      }
-
-      // Wait for backup to complete
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Copy RDB file
-      const copyProcess = spawn('docker', [
-        'cp',
-        `${sourceContainer}:/data/dump.rdb`,
-        '/tmp/redis-clone.rdb',
-      ]);
-
-      copyProcess.on('close', (copyCode) => {
-        if (copyCode !== 0) {
-          reject(new Error('Failed to copy Redis data'));
-          return;
-        }
-
-        // Restore to target
-        const restoreProcess = spawn('docker', [
-          'cp',
-          '/tmp/redis-clone.rdb',
-          `${targetContainer}:/data/dump.rdb`,
-        ]);
-
-        restoreProcess.on('close', async (restoreCode) => {
-          if (restoreCode === 0) {
-            // Restart target to load data
-            const dockerManager = getDockerManager();
-            try {
-              await dockerManager.stopDatabase(targetContainer.replace('-db', ''));
-              await dockerManager.startDatabase(targetContainer.replace('-db', ''));
-              resolve();
-            } catch (error) {
-              reject(error);
-            }
-          } else {
-            reject(new Error('Failed to restore Redis data'));
-          }
-        });
-
-        restoreProcess.on('error', reject);
-      });
-
-      copyProcess.on('error', reject);
-    });
-
-    bgsaveProcess.on('error', reject);
+    const child = spawn('docker', args);
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(failureMessage))));
+    child.on('error', reject);
   });
+}
+
+async function cloneRedis(
+  sourceContainer: string,
+  targetContainer: string,
+  targetName: string,
+): Promise<void> {
+  // Persist the source dataset to its RDB file
+  await runDockerStep(['exec', sourceContainer, 'redis-cli', 'BGSAVE'], 'Redis backup failed');
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  await runDockerStep(
+    ['cp', `${sourceContainer}:/data/dump.rdb`, '/tmp/redis-clone.rdb'],
+    'Failed to copy Redis data',
+  );
+
+  // The RDB must land while the target is down: Redis rewrites dump.rdb on
+  // shutdown, so copying into a running server gets clobbered by its own
+  // (empty) dataset when it stops.
+  const dockerManager = getDockerManager();
+  await dockerManager.stopDatabase(targetName);
+  await runDockerStep(
+    ['cp', '/tmp/redis-clone.rdb', `${targetContainer}:/data/dump.rdb`],
+    'Failed to restore Redis data',
+  );
+  await dockerManager.startDatabase(targetName);
 }
 
 async function handleClone(options: CloneOptions): Promise<void> {

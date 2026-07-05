@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import { spawn } from 'child_process';
 import { getDockerManager } from '../../core/docker.js';
+import { resolveServiceContainer } from '../../core/containers.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { recordOperation } from '../../core/security.js';
 import { DatabaseInstance } from '../../core/types.js';
@@ -101,8 +102,9 @@ async function restoreMariaDB(
 ): Promise<void> {
   const password = getMariaDBRootPassword(env);
   // --all-databases dumps carry their own CREATE DATABASE / USE statements.
+  // mariadb:11 images ship only the mariadb-* client names.
   await restoreViaStdin(
-    ['exec', '-i', '-e', `MYSQL_PWD=${password}`, container, 'mysql', '-u', 'root'],
+    ['exec', '-i', '-e', `MYSQL_PWD=${password}`, container, 'mariadb', '-u', 'root'],
     snapshotPath,
     'MariaDB',
   );
@@ -110,7 +112,8 @@ async function restoreMariaDB(
 
 async function restoreRedis(instanceName: string, snapshotPath: string): Promise<void> {
   const dockerManager = getDockerManager();
-  const container = `${instanceName}-db`;
+  // Resolved via `compose ps -aq`, so the stopped container is still found.
+  const container = await resolveServiceContainer(instanceName);
 
   // Redis only loads an RDB at startup, so swap the file with the server down.
   await dockerManager.stopDatabase(instanceName);
@@ -135,8 +138,6 @@ async function restoreEmbedded(volume: string, snapshotPath: string): Promise<vo
 }
 
 async function restoreInto(instance: DatabaseInstance, snapshotPath: string): Promise<void> {
-  const container = `${instance.name}-db`;
-
   if (EMBEDDED_ENGINES.has(instance.engine)) {
     await restoreEmbedded(instance.volume, snapshotPath);
     return;
@@ -145,10 +146,18 @@ async function restoreInto(instance: DatabaseInstance, snapshotPath: string): Pr
   switch (instance.engine) {
     case 'postgresql':
     case 'timescaledb':
-      await restorePostgreSQL(container, snapshotPath, instance.environment);
+      await restorePostgreSQL(
+        await resolveServiceContainer(instance.name),
+        snapshotPath,
+        instance.environment,
+      );
       break;
     case 'mariadb':
-      await restoreMariaDB(container, snapshotPath, instance.environment);
+      await restoreMariaDB(
+        await resolveServiceContainer(instance.name),
+        snapshotPath,
+        instance.environment,
+      );
       break;
     case 'redis':
       await restoreRedis(instance.name, snapshotPath);
