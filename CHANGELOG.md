@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- End-to-end integration suite (`npm run test:integration`): the full
+  init → start → seed → snapshot → destroy → restore cycle (plus clone and
+  merge where supported) runs against real containers for every Tier 1 engine,
+  on every push, in CI.
+- Automation contract, documented in `AUTOMATION.md`: `--json` envelopes with a
+  stable schema on all state-changing verbs, semantic exit codes (0–6),
+  idempotency flags (`init --exists-ok`, `remove --missing-ok`), guaranteed
+  non-interactivity under `--json`, and an advisory lock serializing all local
+  state mutations across concurrent hayai processes.
+- Engine tier system (`getEngineTier`): Tier 1 (postgresql, timescaledb,
+  mariadb, redis, sqlite, duckdb, leveldb, lmdb) has every data verb verified
+  by CI; Tier 2 provisions fine but its data verbs are best-effort. The README
+  support matrix states exactly what each engine gets.
+
+### Fixed
+- All data commands (`snapshot`, `restore`, `clone`, `merge`) addressed
+  containers by a name Compose never assigns (`<name>-db`), so they failed for
+  every containerized engine. Containers are now resolved through
+  `docker compose ps`.
+- MariaDB data commands invoked `mysql`/`mysqldump`, which no longer exist in
+  the `mariadb:11` image; they now use `mariadb`/`mariadb-dump`.
+- Redis clone copied the RDB into a running target, which overwrote it with its
+  own dataset on shutdown; the copy now happens with the target stopped.
+- PostgreSQL merge lost the entire table's data on the first key conflict
+  (all-or-nothing COPY); it now merges row-by-row and documents the real
+  conflict semantics (target wins; Redis: source wins).
+- `list --format json` stdout was corrupted by the Docker status banner; all
+  human chatter now goes to stderr.
+- `tikv` and `nebula` generated broken compose services (alpine image, wrong
+  port) because the engine data in `docker.ts` had drifted from the template
+  catalog; `templates.ts` is now the single source those values are read from.
+- Compose services now actually join the configured `network_name`; the
+  networks block used to be declared but never referenced.
+- Docker is verified lazily: `init`, `list`, `connect`, `export` and all
+  embedded-engine operations work without a Docker daemon, and commands that do
+  need it fail with the documented Environment exit code instead of a generic
+  exit 1.
+
+### Changed
+- Removed the decorative `REDIS_PASSWORD` template variable — the official
+  image ignores it, and the connection URI promised authentication that never
+  existed. Redis instances are unauthenticated, consistent with the documented
+  local-dev threat model.
+- Removed the never-implemented `sync --force` flag; `sync` is additive by
+  design. `start`/`stop` `--all` now works as the explicit form of omitting the
+  instance name.
+
 ## [0.8.0] - 2026-06-22
 
 A large pass that makes the commands do what they claim, hardens the toolchain

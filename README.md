@@ -173,6 +173,35 @@ All databases are **100% open-source** with permissive licenses:
 
 **Total: 22 databases across 9 categories**
 
+## 🎯 Engine Support Matrix
+
+Hayai is honest about what each engine gets. **Tier 1** engines have every
+data verb verified end-to-end against real containers by CI on every push.
+**Tier 2** engines provision, start and stop fine, but their data verbs are
+best-effort and not yet covered by the integration suite.
+
+| Engine | Tier | Snapshot | Restore | Clone | Merge |
+|---|---|---|---|---|---|
+| PostgreSQL | **1** | ✅ `pg_dump` | ✅ | ✅ | ✅ (target wins conflicts) |
+| TimescaleDB | **1** | ✅ `pg_dump` | ✅ | manual | manual |
+| MariaDB | **1** | ✅ `mariadb-dump` | ✅ | ✅ | ✅ (target wins conflicts) |
+| Redis | **1** | ✅ RDB | ✅ | ✅ | ✅ (source wins conflicts) |
+| SQLite, DuckDB, LevelDB, LMDB | **1** | ✅ archive | ✅ | ✅ file copy | — |
+| InfluxDB 2.x / 3 | 2 | ✅ `influx backup` | manual | manual | — |
+| Cassandra | 2 | ✅ `nodetool` | manual | manual | — |
+| Qdrant, Weaviate, ArangoDB, Meilisearch, Typesense, QuestDB, VictoriaMetrics, HoraeDB | 2 | ⚠️ generic archive¹ | manual | manual | — |
+| TiKV, Milvus, NebulaGraph | 2 (experimental²) | ⚠️ generic archive¹ | manual | manual | — |
+
+¹ A `tar` of the running container's data directory — fine for dev checkpoints,
+but not crash-consistent; prefer the engine's native backup tooling for
+anything you care about.
+² Cluster-only engines: hayai runs a single container, which these engines
+need a multi-node deployment to be dependable.
+
+"Manual" means hayai refuses rather than guessing, and prints the engine's
+native procedure. Commands exit with the documented codes
+(see [AUTOMATION.md](AUTOMATION.md)) so scripts can branch on the outcome.
+
 ## 🛠️ Installation
 
 ### Prerequisites
@@ -383,8 +412,6 @@ databases:
   cache-redis:
     engine: redis
     port: 6379
-    environment:
-      REDIS_PASSWORD: password
   
   metrics-influxdb2:
     engine: influxdb2
