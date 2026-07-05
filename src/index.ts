@@ -14,7 +14,11 @@ export {
   isEngineSupported,
   getEnginesByType,
   getOpenSourceInfo,
+  getEngineTier,
 } from './core/templates.js';
+export { ExitCode } from './core/exit-codes.js';
+export type { ExitCodeValue } from './core/exit-codes.js';
+export type { JsonEnvelope } from './core/output.js';
 
 export { buildConnectionInfo } from './core/connection.js';
 export type { ConnectionInfo } from './core/connection.js';

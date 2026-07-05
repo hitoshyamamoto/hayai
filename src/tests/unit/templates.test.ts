@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { DatabaseTemplates } from '../../core/templates.js';
+import { DatabaseTemplates, getEngineTier } from '../../core/templates.js';
 
 describe('DatabaseTemplates - Basic Validation', () => {
   it('should return all 22 configured databases', () => {
@@ -53,6 +53,29 @@ describe('DatabaseTemplates - Basic Validation', () => {
     const wideColumnEngines = DatabaseTemplates.getEnginesByType('widecolumn');
     expect(wideColumnEngines).toHaveLength(1);
     expect(wideColumnEngines).toContain('cassandra');
+  });
+
+  it('assigns Tier 1 exactly to the engines the integration suite verifies', () => {
+    const tier1 = [...DatabaseTemplates.getAllTemplates().keys()]
+      .filter((engine) => getEngineTier(engine) === 1)
+      .sort();
+
+    // Membership is earned by CI coverage (src/tests/integration). Adding an
+    // engine here without adding its end-to-end verification breaks the
+    // honesty contract the tier system exists for.
+    expect(tier1).toEqual([
+      'duckdb',
+      'leveldb',
+      'lmdb',
+      'mariadb',
+      'postgresql',
+      'redis',
+      'sqlite',
+      'timescaledb',
+    ]);
+
+    // Unknown engines never get promoted by accident
+    expect(getEngineTier('not-an-engine')).toBe(2);
   });
 
   it('marks the cluster-only engines as experimental and nothing else', () => {
