@@ -98,6 +98,7 @@ hayai studio
 - **🔧 Smart Port Management**: Intelligent port allocation (5000-6000 range)
 - **🌐 Admin Dashboards**: One-command access to the web UIs that engines ship built-in (Qdrant, ArangoDB, InfluxDB, QuestDB, Meilisearch, VictoriaMetrics)
 - **✨ Modern CLI**: Interactive prompts with beautiful output
+- **🤖 Automation-Ready**: `--json` envelopes, semantic exit codes, idempotent verbs and state locking — scriptable by CI jobs and orchestrators (see [AUTOMATION.md](AUTOMATION.md))
 
 ## 📦 Supported Databases
 
@@ -540,6 +541,7 @@ npm run lint
 - [Development Guide](DEVELOPMENT.md) - Development setup and workflow
 - [.hayaidb Configuration](HAYAIDB.md) - Declarative database configuration guide
 - [Backup & Snapshots](ABOUT_BACKUP.md) - Complete backup and restoration guide
+- [Automation Contract](AUTOMATION.md) - JSON output, exit codes, idempotency and locking for scripts and orchestrators
 
 ## 📄 License
 
