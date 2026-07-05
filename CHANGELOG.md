@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-05
+
+The trust release: every advertised data verb is now verified end-to-end
+against real containers in CI, the CLI gained an automation contract that
+orchestrators can script against, the engine catalog grew from 22 to 30 with
+an honest tier system, and the first Airflow integration landed.
+
 ### Added
 - End-to-end integration suite (`npm run test:integration`): the full
   init → start → seed → snapshot → destroy → restore cycle (plus clone and
