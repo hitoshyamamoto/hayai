@@ -15,6 +15,7 @@ import { studioCommand } from './commands/studio.js';
 import { snapshotCommand } from './commands/snapshot.js';
 import { restoreCommand } from './commands/restore.js';
 import { connectCommand } from './commands/connect.js';
+import { envCommand } from './commands/env.js';
 import { exportCommand } from './commands/export.js';
 import { syncCommand } from './commands/sync.js';
 import { cloneCommand } from './commands/clone.js';
@@ -114,6 +115,7 @@ ${chalk.bold('COMMANDS')}
   ${chalk.cyan('stop')} [name]   Stop database instances
   ${chalk.cyan('list')}          List all database instances
   ${chalk.cyan('connect')} <name> Print connection details for an instance
+  ${chalk.cyan('env')}           Print connection env vars (shell, dotenv, airflow)
   ${chalk.cyan('remove')} <name> Remove a database instance
   ${chalk.cyan('logs')} <name>   View logs from a database instance
   ${chalk.cyan('studio')} [name] Open admin dashboards
@@ -149,6 +151,7 @@ ${chalk.bold('OPTIONS')}
 program.addCommand(initCommand);
 program.addCommand(listCommand);
 program.addCommand(connectCommand);
+program.addCommand(envCommand);
 program.addCommand(startCommand);
 program.addCommand(stopCommand);
 program.addCommand(removeCommand);
@@ -183,6 +186,7 @@ ${chalk.bold('COMMANDS')}
   ${chalk.cyan('stop')} [name]   Stop database instances
   ${chalk.cyan('list')}          List all database instances
   ${chalk.cyan('connect')} <name> Print connection details for an instance
+  ${chalk.cyan('env')}           Print connection env vars (shell, dotenv, airflow)
   ${chalk.cyan('remove')} <name> Remove a database instance
   ${chalk.cyan('logs')} <name>   View logs from a database instance
   ${chalk.cyan('studio')} [name] Open admin dashboards
