@@ -210,7 +210,9 @@ export class DockerManager {
     // Docker is ready
     this.dockerVerified = true;
 
-    console.log(chalk.green(`✅ Docker ${result.version} is ready`));
+    // Status chatter goes to stderr so data commands (list --format json,
+    // connect --uri) keep stdout machine-readable.
+    console.error(chalk.green(`✅ Docker ${result.version} is ready`));
   }
 
   private async pathExists(filePath: string): Promise<boolean> {
