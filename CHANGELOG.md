@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mariadb, redis, sqlite, duckdb, leveldb, lmdb) has every data verb verified
   by CI; Tier 2 provisions fine but its data verbs are best-effort. The README
   support matrix states exactly what each engine gets.
+- `hayai env`: prints connection environment variables for the whole
+  inventory in `shell` (eval-able exports), `dotenv` and `airflow`
+  (`AIRFLOW_CONN_*`) formats. Engines without a well-known Airflow connection
+  type are skipped and listed on stderr rather than emitted broken.
+- `examples/airflow/`: the canonical ephemeral-staging DAG (provision → ETL →
+  snapshot → unconditional teardown) plus the connection-generation and
+  scheduled-maintenance patterns, all on plain BashOperator.
 
 ### Fixed
 - All data commands (`snapshot`, `restore`, `clone`, `merge`) addressed
