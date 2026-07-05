@@ -25,8 +25,10 @@ interface CloneOptions extends CLIOptions {
 // Engines with a reliable native clone implementation
 const FULLY_COMPATIBLE_ENGINES = new Set([
   'postgresql', // pg_dump + psql
-  'mariadb', // mysqldump + mysql
+  'mariadb', // mariadb-dump + mariadb
+  'mysql', // mysqldump + mysql
   'redis', // BGSAVE + RDB copy
+  'valkey', // BGSAVE + RDB copy (valkey-cli)
   'sqlite', // host file copy (embedded)
   'duckdb', // host file copy (embedded)
   'leveldb', // host file copy (embedded)
@@ -143,10 +145,22 @@ async function cloneData(source: any, target: any): Promise<void> {
       await clonePostgreSQL(sourceContainer, targetContainer, source.environment);
       break;
     case 'mariadb':
-      await cloneMariaDB(sourceContainer, targetContainer, source.environment);
+      await cloneMariaDB(sourceContainer, targetContainer, source.environment, {
+        dump: 'mariadb-dump',
+        client: 'mariadb',
+      });
+      break;
+    case 'mysql':
+      await cloneMariaDB(sourceContainer, targetContainer, source.environment, {
+        dump: 'mysqldump',
+        client: 'mysql',
+      });
       break;
     case 'redis':
-      await cloneRedis(sourceContainer, targetContainer, target.name);
+      await cloneRedis(sourceContainer, targetContainer, target.name, 'redis-cli');
+      break;
+    case 'valkey':
+      await cloneRedis(sourceContainer, targetContainer, target.name, 'valkey-cli');
       break;
     default:
       // This situation should never happen due to compatibility validation
@@ -191,6 +205,7 @@ async function cloneMariaDB(
   sourceContainer: string,
   targetContainer: string,
   environment: Record<string, string> = {},
+  binaries: { dump: string; client: string } = { dump: 'mariadb-dump', client: 'mariadb' },
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const rootPassword = getMariaDBRootPassword(environment);
@@ -204,8 +219,7 @@ async function cloneMariaDB(
         '-e',
         `MYSQL_PWD=${rootPassword}`,
         sourceContainer,
-        // mariadb:11 images ship only the mariadb-* client names
-        'mariadb-dump',
+        binaries.dump,
         '-u',
         'root',
         ...dumpTarget,
@@ -215,7 +229,16 @@ async function cloneMariaDB(
 
     const restoreProcess = spawn(
       'docker',
-      ['exec', '-i', '-e', `MYSQL_PWD=${rootPassword}`, targetContainer, 'mariadb', '-u', 'root'],
+      [
+        'exec',
+        '-i',
+        '-e',
+        `MYSQL_PWD=${rootPassword}`,
+        targetContainer,
+        binaries.client,
+        '-u',
+        'root',
+      ],
       { stdio: ['pipe', 'inherit', 'pipe'] },
     );
 
@@ -242,9 +265,10 @@ async function cloneRedis(
   sourceContainer: string,
   targetContainer: string,
   targetName: string,
+  cli: string = 'redis-cli',
 ): Promise<void> {
   // Persist the source dataset to its RDB file
-  await runDockerStep(['exec', sourceContainer, 'redis-cli', 'BGSAVE'], 'Redis backup failed');
+  await runDockerStep(['exec', sourceContainer, cli, 'BGSAVE'], 'Redis backup failed');
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   await runDockerStep(
@@ -450,8 +474,8 @@ export const cloneCommand = new Command('clone')
     `
 ${chalk.bold('Supported Engines (Fully Compatible):')}
   ${chalk.green('✅ postgresql')}   - Native pg_dump + psql
-  ${chalk.green('✅ mariadb')}      - Native mysqldump + mysql
-  ${chalk.green('✅ redis')}        - Native BGSAVE + RDB copy
+  ${chalk.green('✅ mariadb, mysql')} - Native dump + replay with each image's client
+  ${chalk.green('✅ redis, valkey')} - Native BGSAVE + RDB copy
   ${chalk.green('✅ sqlite, duckdb, leveldb, lmdb')} - Host file copy (embedded)
 
 ${chalk.bold('Unsupported Engines (Manual Clone Required):')}

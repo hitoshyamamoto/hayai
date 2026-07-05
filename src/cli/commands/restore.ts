@@ -30,7 +30,9 @@ const RESTORABLE_ENGINES = new Set([
   'postgresql',
   'timescaledb',
   'mariadb',
+  'mysql',
   'redis',
+  'valkey',
   ...EMBEDDED_ENGINES,
 ]);
 
@@ -101,14 +103,15 @@ async function restoreMariaDB(
   container: string,
   snapshotPath: string,
   env: Record<string, string>,
+  clientBinary: string = 'mariadb',
 ): Promise<void> {
   const password = getMariaDBRootPassword(env);
   // --all-databases dumps carry their own CREATE DATABASE / USE statements.
-  // mariadb:11 images ship only the mariadb-* client names.
+  // mariadb:11 ships only the mariadb-* client names; mysql:8 ships mysql.
   await restoreViaStdin(
-    ['exec', '-i', '-e', `MYSQL_PWD=${password}`, container, 'mariadb', '-u', 'root'],
+    ['exec', '-i', '-e', `MYSQL_PWD=${password}`, container, clientBinary, '-u', 'root'],
     snapshotPath,
-    'MariaDB',
+    'MariaDB/MySQL',
   );
 }
 
@@ -159,9 +162,20 @@ async function restoreInto(instance: DatabaseInstance, snapshotPath: string): Pr
         await resolveServiceContainer(instance.name),
         snapshotPath,
         instance.environment,
+        'mariadb',
+      );
+      break;
+    case 'mysql':
+      await restoreMariaDB(
+        await resolveServiceContainer(instance.name),
+        snapshotPath,
+        instance.environment,
+        'mysql',
       );
       break;
     case 'redis':
+    case 'valkey':
+      // Identical RDB-swap sequence: valkey keeps /data/dump.rdb semantics
       await restoreRedis(instance.name, snapshotPath);
       break;
     default:
@@ -319,8 +333,8 @@ export const restoreCommand = new Command('restore')
     `
 ${chalk.bold('Supported engines:')}
   ${chalk.green('✅ postgresql, timescaledb')}  - psql replays the SQL dump
-  ${chalk.green('✅ mariadb')}                  - mysql replays the SQL dump
-  ${chalk.green('✅ redis')}                    - RDB swapped in with the server stopped
+  ${chalk.green('✅ mariadb, mysql')}           - the SQL dump is replayed by the native client
+  ${chalk.green('✅ redis, valkey')}            - RDB swapped in with the server stopped
   ${chalk.green('✅ sqlite, duckdb, leveldb, lmdb')} - data directory extracted in place
 
 ${chalk.bold('Not supported (snapshot-only):')}

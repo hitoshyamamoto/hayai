@@ -31,8 +31,10 @@ function airflowConnUri(instance: DatabaseInstance): string | null {
     case 'timescaledb':
       return uri.replace(/^postgresql:/, 'postgres:');
     case 'mariadb':
+    case 'mysql':
       return uri; // already mysql://user:pass@host:port/db
     case 'redis':
+    case 'valkey':
       return uri; // redis://host:port
     default:
       return null;

@@ -46,10 +46,17 @@ async function createSnapshot(instance: any, snapshotPath: string): Promise<void
       await createPostgreSQLSnapshot(container, snapshotPath, instance.environment);
       break;
     case 'mariadb':
-      await createMariaDBSnapshot(container, snapshotPath, instance.environment);
+      // mariadb:11 ships only the mariadb-* client names
+      await createMariaDBSnapshot(container, snapshotPath, instance.environment, 'mariadb-dump');
+      break;
+    case 'mysql':
+      await createMariaDBSnapshot(container, snapshotPath, instance.environment, 'mysqldump');
       break;
     case 'redis':
-      await createRedisSnapshot(container, snapshotPath);
+      await createRedisSnapshot(container, snapshotPath, 'redis-cli');
+      break;
+    case 'valkey':
+      await createRedisSnapshot(container, snapshotPath, 'valkey-cli');
       break;
     case 'influxdb2':
     case 'influxdb3':
@@ -92,6 +99,7 @@ async function createMariaDBSnapshot(
   container: string,
   snapshotPath: string,
   environment: Record<string, string> = {},
+  dumpBinary: string = 'mariadb-dump',
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const rootPassword = getMariaDBRootPassword(environment);
@@ -102,9 +110,7 @@ async function createMariaDBSnapshot(
         '-e',
         `MYSQL_PWD=${rootPassword}`,
         container,
-        // mariadb:11 images ship only the mariadb-* client names; the mysql*
-        // compatibility symlinks are gone.
-        'mariadb-dump',
+        dumpBinary,
         '-u',
         'root',
         '--all-databases',
@@ -124,10 +130,14 @@ async function createMariaDBSnapshot(
   });
 }
 
-async function createRedisSnapshot(container: string, snapshotPath: string): Promise<void> {
+async function createRedisSnapshot(
+  container: string,
+  snapshotPath: string,
+  cli: string = 'redis-cli',
+): Promise<void> {
   return new Promise((resolve, reject) => {
     // Create RDB backup
-    const bgsaveProcess = spawn('docker', ['exec', container, 'redis-cli', 'BGSAVE']);
+    const bgsaveProcess = spawn('docker', ['exec', container, cli, 'BGSAVE']);
 
     bgsaveProcess.on('close', async (code) => {
       if (code !== 0) {
@@ -288,7 +298,7 @@ async function createCassandraSnapshot(container: string, snapshotPath: string):
 
 // The snapshot file extension follows the engine's native backup format.
 function snapshotExtension(engine: string): string {
-  if (engine === 'redis') return 'rdb';
+  if (engine === 'redis' || engine === 'valkey') return 'rdb';
   if (engine.includes('influx') || engine === 'cassandra') return 'tar.gz';
   if (EMBEDDED_ENGINES.has(engine)) return 'tar.gz';
   return 'sql';

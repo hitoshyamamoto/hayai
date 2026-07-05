@@ -13,7 +13,7 @@ import { ExitCode, fail, failFromError, succeed } from '../cli-output.js';
 
 // Engines with a real, key/row-level merge. Anything else (or a cross-engine
 // pair) is refused rather than guessed at.
-const MERGEABLE_ENGINES = new Set(['postgresql', 'mariadb', 'redis']);
+const MERGEABLE_ENGINES = new Set(['postgresql', 'mariadb', 'mysql', 'redis', 'valkey']);
 
 interface MergeOptions extends CLIOptions {
   source: string;
@@ -81,10 +81,23 @@ async function mergeDatabases(sourceInstance: any, targetInstance: any): Promise
         targetContainer,
         sourceInstance.environment,
         targetInstance.environment,
+        { dump: 'mariadb-dump', client: 'mariadb' },
+      );
+      break;
+    case 'mysql':
+      await mergeMariaDB(
+        sourceContainer,
+        targetContainer,
+        sourceInstance.environment,
+        targetInstance.environment,
+        { dump: 'mysqldump', client: 'mysql' },
       );
       break;
     case 'redis':
-      await mergeRedis(sourceContainer, composeServiceName(targetInstance.name));
+      await mergeRedis(sourceContainer, composeServiceName(targetInstance.name), 'redis-cli');
+      break;
+    case 'valkey':
+      await mergeRedis(sourceContainer, composeServiceName(targetInstance.name), 'valkey-cli');
       break;
     default:
       // Unreachable: handleMerge validates the engine before calling here.
@@ -161,6 +174,7 @@ async function mergeMariaDB(
   targetContainer: string,
   sourceEnv: Record<string, string> = {},
   targetEnv: Record<string, string> = {},
+  binaries: { dump: string; client: string } = { dump: 'mariadb-dump', client: 'mariadb' },
 ): Promise<void> {
   console.log(chalk.yellow('🔄 Merging MariaDB databases...'));
 
@@ -179,8 +193,7 @@ async function mergeMariaDB(
         '-e',
         `MYSQL_PWD=${getMariaDBRootPassword(sourceEnv)}`,
         sourceContainer,
-        // mariadb:11 images ship only the mariadb-* client names
-        'mariadb-dump',
+        binaries.dump,
         '-u',
         'root',
         '--no-create-info',
@@ -198,7 +211,7 @@ async function mergeMariaDB(
         '-e',
         `MYSQL_PWD=${getMariaDBRootPassword(targetEnv)}`,
         targetContainer,
-        'mariadb',
+        binaries.client,
         '-u',
         'root',
         '--force',
@@ -218,11 +231,15 @@ async function mergeMariaDB(
   });
 }
 
-async function mergeRedis(sourceContainer: string, targetServiceHost: string): Promise<void> {
+async function mergeRedis(
+  sourceContainer: string,
+  targetServiceHost: string,
+  cli: string = 'redis-cli',
+): Promise<void> {
   console.log(chalk.yellow('🔄 Merging Redis databases...'));
 
   // SCAN instead of KEYS — KEYS blocks the server on large datasets
-  const keys = await scanRedisKeys(sourceContainer);
+  const keys = await scanRedisKeys(sourceContainer, cli);
   if (keys.length === 0) {
     return; // Nothing to merge
   }
@@ -234,7 +251,7 @@ async function mergeRedis(sourceContainer: string, targetServiceHost: string): P
   // service name, which doubles as its DNS name on the shared network.
   const failed: string[] = [];
   for (const key of keys) {
-    const ok = await migrateRedisKey(sourceContainer, targetServiceHost, key);
+    const ok = await migrateRedisKey(sourceContainer, targetServiceHost, key, cli);
     if (!ok) {
       failed.push(key);
     }
@@ -249,9 +266,9 @@ async function mergeRedis(sourceContainer: string, targetServiceHost: string): P
   console.log(chalk.gray(`   ${keys.length} keys merged`));
 }
 
-async function scanRedisKeys(container: string): Promise<string[]> {
+async function scanRedisKeys(container: string, cli: string = 'redis-cli'): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    const scanProcess = spawn('docker', ['exec', container, 'redis-cli', '--scan']);
+    const scanProcess = spawn('docker', ['exec', container, cli, '--scan']);
 
     let output = '';
     scanProcess.stdout.on('data', (data) => {
@@ -279,12 +296,13 @@ async function migrateRedisKey(
   sourceContainer: string,
   targetServiceHost: string,
   key: string,
+  cli: string = 'redis-cli',
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const migrateProcess = spawn('docker', [
       'exec',
       sourceContainer,
-      'redis-cli',
+      cli,
       'MIGRATE',
       targetServiceHost,
       '6379',
@@ -529,8 +547,8 @@ ${chalk.bold('How Merge Works:')}
     the key with the source's value (MIGRATE … REPLACE)
 
 ${chalk.bold('Supported Engines (same engine on both sides):')}
-  • PostgreSQL, MariaDB: SQL-level merging (data-only)
-  • Redis: key-level merging with MIGRATE … COPY REPLACE
+  • PostgreSQL, MariaDB, MySQL: SQL-level merging (data-only)
+  • Redis, Valkey: key-level merging with MIGRATE … COPY REPLACE
 
 ${chalk.bold('Unsupported:')}
   • Cross-engine pairs and any other engine are refused — there is no safe
