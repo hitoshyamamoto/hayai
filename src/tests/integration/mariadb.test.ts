@@ -11,9 +11,10 @@ import {
 const ROOT_PASSWORD = 'rootpassword';
 const DB = 'database';
 
+// mariadb:11 images ship only the mariadb-* client names (no mysql symlinks)
 async function mysql(projectDir: string, service: string, sql: string) {
   return composeExec(projectDir, service, [
-    'mysql',
+    'mariadb',
     '-uroot',
     `-p${ROOT_PASSWORD}`,
     '-N',
