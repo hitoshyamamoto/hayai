@@ -195,9 +195,6 @@ export class HayaiDbManager {
         redis_cache: {
           engine: 'redis',
           port: 6379,
-          environment: {
-            REDIS_PASSWORD: 'redis_secret_456',
-          },
         },
         metrics_influx: {
           engine: 'influxdb2',

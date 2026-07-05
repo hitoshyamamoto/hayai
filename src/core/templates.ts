@@ -88,9 +88,11 @@ export class DatabaseTemplates {
         image: 'redis:7.0-alpine',
         ports: [6379],
         volumes: ['/data'],
-        environment: {
-          REDIS_PASSWORD: 'password',
-        },
+        // No REDIS_PASSWORD: the official image ignores that variable, so
+        // declaring it only created the illusion of an authenticated server.
+        // The instance runs unauthenticated, like every hayai default
+        // credential effectively is (see SECURITY.md's threat model).
+        environment: {},
         healthcheck: {
           test: 'redis-cli ping',
           interval: '10s',
@@ -707,4 +709,28 @@ export const getOpenSourceInfo = (): Record<
   { license: string; fullyOpenSource: boolean; notes: string }
 > => {
   return DatabaseTemplates.getOpenSourceInfo();
+};
+
+// Tier 1: every data verb (snapshot, restore, clone, merge where supported)
+// is exercised end-to-end against real containers by the integration suite on
+// every push. Membership is earned by CI coverage, not by intention — an
+// engine moves up only when its verbs are verified. duckdb/leveldb/lmdb share
+// sqlite's host-file code paths verbatim; timescaledb shares postgresql's
+// dump/restore path and has its own suite.
+const TIER1_ENGINES = new Set([
+  'postgresql',
+  'timescaledb',
+  'mariadb',
+  'redis',
+  'sqlite',
+  'duckdb',
+  'leveldb',
+  'lmdb',
+]);
+
+// Tier 2 engines provision and run fine; their data verbs are best-effort
+// (generic tar snapshot, no automated restore/clone/merge) and are not yet
+// covered by the integration suite.
+export const getEngineTier = (engine: string): 1 | 2 => {
+  return TIER1_ENGINES.has(engine.toLowerCase()) ? 1 : 2;
 };

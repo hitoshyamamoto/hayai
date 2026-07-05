@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { DatabaseInstance, DatabaseTemplate, ComposeFile } from './types.js';
 import { getConfig, getComposeFilePath, getDataDirectory } from './config.js';
+import { getTemplate } from './templates.js';
 import { allocatePort, deallocatePort } from './port-manager.js';
 import { withStateLock } from './lock.js';
 
@@ -535,15 +536,24 @@ export class DockerManager {
         continue; // embedded engines are host files, not containers
       }
       const serviceName = `${name}-db`;
-      const defaultPort = this.getDefaultPortForEngine(instance.engine);
+      const engine = this.getEngineDefinition(instance.engine);
+      const defaultPort = engine.ports[0] ?? 0;
 
       const serviceConfig: any = {
-        image: this.getImageForEngine(instance.engine),
-        volumes: [`${instance.volume}:${this.getDefaultVolumeForEngine(instance.engine)}`],
+        image: engine.image,
+        volumes: [`${instance.volume}:${engine.volumes[0] ?? '/data'}`],
         environment: instance.environment,
         restart: config.defaults.restart_policy,
-        healthcheck: this.getHealthcheckForEngine(instance.engine),
+        // Services join the configured network explicitly — previously the
+        // networks block was declared but never referenced, so every service
+        // silently landed on the compose default network instead.
+        networks: [config.docker.network_name],
       };
+
+      const healthcheck = this.resolveHealthcheck(engine, instance.environment);
+      if (healthcheck) {
+        serviceConfig.healthcheck = healthcheck;
+      }
 
       // Only add ports for databases that need them (not embedded databases)
       if (defaultPort > 0) {
@@ -635,7 +645,9 @@ export class DockerManager {
         return `mysql://${env.MYSQL_USER}:${env.MYSQL_PASSWORD}@localhost:${port}/${env.MYSQL_DATABASE}`;
 
       case 'redis':
-        return `redis://:${env.REDIS_PASSWORD}@localhost:${port}`;
+        // Unauthenticated by design — the image ignores REDIS_PASSWORD, so a
+        // credentialed URI here would just be a false promise.
+        return `redis://localhost:${port}`;
 
       case 'cassandra':
         return `cassandra://localhost:${port}`;
@@ -694,197 +706,41 @@ export class DockerManager {
     }
   }
 
-  private getImageForEngine(engineName: string): string {
-    const imageMap: Record<string, string> = {
-      postgresql: 'postgres:16-alpine',
-      mariadb: 'mariadb:11',
-      redis: 'redis:7.0-alpine',
-      cassandra: 'cassandra:4.1',
-      qdrant: 'qdrant/qdrant:v1.7.0',
-      weaviate: 'semitechnologies/weaviate:1.23.0',
-      milvus: 'milvusdb/milvus:v2.3.0',
-      arangodb: 'arangodb:3.11',
-      meilisearch: 'getmeili/meilisearch:v1.5',
-      typesense: 'typesense/typesense:0.25.0',
-      sqlite: 'alpine:latest',
-      duckdb: 'alpine:latest',
-      leveldb: 'alpine:latest',
-      // Time Series Databases
-      influxdb3: 'influxdb:latest',
-      influxdb2: 'influxdb:2.7-alpine',
-      timescaledb: 'timescale/timescaledb:latest-pg16',
-      questdb: 'questdb/questdb:latest',
-      victoriametrics: 'victoriametrics/victoria-metrics:latest',
-      horaedb: 'apache/horaedb:latest',
-    };
-
-    return imageMap[engineName] || 'alpine:latest';
+  // templates.ts is the single source of truth for engine definitions. The
+  // per-engine maps that used to live here had already drifted from it: tikv
+  // and nebula fell through to the alpine/8080 fallbacks and produced broken
+  // compose services.
+  private getEngineDefinition(engineName: string) {
+    const template = getTemplate(engineName);
+    if (!template) {
+      throw new Error(
+        `No template found for engine '${engineName}' — the instance predates or ` +
+          'outlives the supported engine list',
+      );
+    }
+    return template.engine;
   }
 
   private getDefaultPortForEngine(engineName: string): number {
-    const portMap: Record<string, number> = {
-      postgresql: 5432,
-      mariadb: 3306,
-      redis: 6379,
-      cassandra: 9042,
-      qdrant: 6333,
-      weaviate: 8080,
-      milvus: 19530,
-      arangodb: 8529,
-      meilisearch: 7700,
-      typesense: 8108,
-      sqlite: 0, // No port for embedded
-      duckdb: 0, // No port for embedded
-      leveldb: 0, // No port for embedded
-      lmdb: 0, // No port for embedded
-      // Time Series Databases
-      influxdb3: 8086,
-      influxdb2: 8086,
-      timescaledb: 5432,
-      questdb: 9000,
-      victoriametrics: 8428,
-      horaedb: 8831,
-    };
-
-    return portMap[engineName] || 8080;
+    return this.getEngineDefinition(engineName).ports[0] ?? 0;
   }
 
-  private getDefaultVolumeForEngine(engineName: string): string {
-    const volumeMap: Record<string, string> = {
-      postgresql: '/var/lib/postgresql/data',
-      mariadb: '/var/lib/mysql',
-      redis: '/data',
-      cassandra: '/var/lib/cassandra',
-      qdrant: '/qdrant/storage',
-      weaviate: '/var/lib/weaviate',
-      milvus: '/var/lib/milvus',
-      arangodb: '/var/lib/arangodb3',
-      meilisearch: '/meili_data',
-      typesense: '/data',
-      sqlite: '/data',
-      duckdb: '/data',
-      leveldb: '/data',
-      // Time Series Databases
-      influxdb3: '/var/lib/influxdb3',
-      influxdb2: '/var/lib/influxdb2',
-      timescaledb: '/var/lib/postgresql/data',
-      questdb: '/var/lib/questdb',
-      victoriametrics: '/victoria-metrics-data',
-      horaedb: '/opt/horaedb',
-    };
-
-    return volumeMap[engineName] || '/data';
-  }
-
-  private getHealthcheckForEngine(engineName: string): any {
-    const healthcheckMap: Record<string, any> = {
-      postgresql: {
-        test: 'pg_isready -U admin -d database',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      mariadb: {
-        test: 'healthcheck.sh --connect --innodb_initialized',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      redis: {
-        test: 'redis-cli ping',
-        interval: '10s',
-        timeout: '3s',
-        retries: 5,
-      },
-      cassandra: {
-        test: 'nodetool status',
-        interval: '30s',
-        timeout: '10s',
-        retries: 5,
-      },
-      qdrant: {
-        test: 'wget --no-verbose --tries=1 --spider http://localhost:6333/health || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      weaviate: {
-        test: 'wget --no-verbose --tries=1 --spider http://localhost:8080/v1/.well-known/ready || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      milvus: {
-        test: 'curl -f http://localhost:9091/healthz || exit 1',
-        interval: '30s',
-        timeout: '10s',
-        retries: 5,
-      },
-      arangodb: {
-        test: 'curl -f http://localhost:8529/_api/version || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      meilisearch: {
-        test: 'wget --no-verbose --tries=1 --spider http://localhost:7700/health || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      typesense: {
-        test: 'curl -f http://localhost:8108/health || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      // Time Series Databases
-      influxdb3: {
-        test: 'curl -f http://localhost:8086/health || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      influxdb2: {
-        test: 'curl -f http://localhost:8086/health || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      timescaledb: {
-        test: 'pg_isready -U admin -d hayai_db',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      questdb: {
-        test: 'curl -f http://localhost:9000/status || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      victoriametrics: {
-        test: 'wget --no-verbose --tries=1 --spider http://localhost:8428/health || exit 1',
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-      },
-      horaedb: {
-        test: 'curl -f http://localhost:8831/health || exit 1',
-        interval: '30s',
-        timeout: '10s',
-        retries: 5,
-      },
-    };
-
-    return (
-      healthcheckMap[engineName] || {
-        test: 'echo "healthy"',
-        interval: '30s',
-        timeout: '10s',
-        retries: 3,
-      }
+  // Template healthchecks may reference instance variables (e.g.
+  // pg_isready -U ${POSTGRES_USER}). Compose would substitute those from the
+  // HOST environment (usually to nothing), so they are resolved here against
+  // the instance's own environment before the file is written.
+  private resolveHealthcheck(
+    engine: { healthcheck?: { test: string; interval: string; timeout: string; retries: number } },
+    environment: Record<string, string>,
+  ): { test: string; interval: string; timeout: string; retries: number } | undefined {
+    if (!engine.healthcheck) {
+      return undefined;
+    }
+    const test = engine.healthcheck.test.replace(
+      /\$\{(\w+)\}/g,
+      (_match, variable) => environment[variable] ?? '',
     );
+    return { ...engine.healthcheck, test };
   }
 
   public async getComposeFileContent(): Promise<string> {
