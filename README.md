@@ -228,6 +228,7 @@ hayai --version
 | `hayai start [name]` | Start database instances | `hayai start` or `hayai start mydb` |
 | `hayai stop [name]` | Stop database instances | `hayai stop` or `hayai stop mydb` |
 | `hayai list` | List all database instances | `hayai list --running` |
+| `hayai env` | Print connection env vars (shell, dotenv, airflow) | `eval "$(hayai env)"` |
 | `hayai studio [name]` | Open admin dashboards | `hayai studio mydb` |
 
 ### Configuration Commands
@@ -569,6 +570,7 @@ npm run lint
 - [.hayaidb Configuration](HAYAIDB.md) - Declarative database configuration guide
 - [Backup & Snapshots](ABOUT_BACKUP.md) - Complete backup and restoration guide
 - [Automation Contract](AUTOMATION.md) - JSON output, exit codes, idempotency and locking for scripts and orchestrators
+- [Airflow Integration](examples/airflow/README.md) - Ephemeral staging DAG, `AIRFLOW_CONN_*` generation and maintenance patterns
 
 ## 📄 License
 
