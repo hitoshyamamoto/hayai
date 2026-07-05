@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { getDockerManager } from '../../core/docker.js';
 import { buildConnectionInfo } from '../../core/connection.js';
+import { ExitCode, fail, failFromError } from '../cli-output.js';
 
 export const connectCommand = new Command('connect')
   .description('Print connection details for a database instance')
@@ -29,9 +30,15 @@ ${chalk.bold('Examples:')}
 
       const instance = dockerManager.getInstance(name);
       if (!instance) {
-        console.error(chalk.red(`❌ Database instance '${name}' not found`));
-        console.log(chalk.yellow('💡 Run `hayai list` to see available databases'));
-        process.exit(1);
+        // connect --json intentionally prints the raw ConnectionInfo object
+        // (documented in AUTOMATION.md), so failures stay on stderr here.
+        fail(
+          'connect',
+          ExitCode.NotFound,
+          `Database instance '${name}' not found`,
+          false,
+          'Run `hayai list` to see available databases',
+        );
       }
 
       const info = buildConnectionInfo(instance);
@@ -55,10 +62,6 @@ ${chalk.bold('Examples:')}
         chalk.gray('\n💡 Script-friendly: ') + chalk.cyan(`hayai connect ${info.name} --uri`),
       );
     } catch (error) {
-      console.error(
-        chalk.red('\n❌ Failed to read connection details:'),
-        error instanceof Error ? error.message : error,
-      );
-      process.exit(1);
+      failFromError('connect', error, false);
     }
   });

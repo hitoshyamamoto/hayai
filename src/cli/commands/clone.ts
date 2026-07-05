@@ -10,6 +10,7 @@ import { recordOperation } from '../../core/security.js';
 import { CLIOptions } from '../../core/types.js';
 import { spawn } from 'child_process';
 import { cp } from 'fs/promises';
+import { ExitCode, fail, failFromError, succeed } from '../cli-output.js';
 
 interface CloneOptions extends CLIOptions {
   from: string;
@@ -18,6 +19,7 @@ interface CloneOptions extends CLIOptions {
   confirm?: boolean;
   force?: boolean;
   dryRun?: boolean;
+  json?: boolean;
 }
 
 // Engines with a reliable native clone implementation
@@ -263,33 +265,45 @@ async function cloneRedis(
 }
 
 async function handleClone(options: CloneOptions): Promise<void> {
+  const jsonMode = Boolean(options.json);
   const dockerManager = getDockerManager();
   await dockerManager.initialize();
 
   // Validate source database
   const sourceInstance = dockerManager.getInstance(options.from);
   if (!sourceInstance) {
-    console.error(chalk.red(`❌ Source database '${options.from}' not found`));
-    console.log(chalk.yellow('💡 Run `hayai list` to see available databases'));
-    process.exit(1);
+    fail(
+      'clone',
+      ExitCode.NotFound,
+      `Source database '${options.from}' not found`,
+      jsonMode,
+      'Run `hayai list` to see available databases',
+    );
   }
 
   // Check if source is running (embedded engines have no server to run)
   if (sourceInstance.status !== 'running' && sourceInstance.status !== 'embedded') {
-    console.error(chalk.red(`❌ Source database '${options.from}' must be running`));
-    console.log(chalk.yellow(`💡 Start it with: ${chalk.cyan(`hayai start ${options.from}`)}`));
-    process.exit(1);
+    fail(
+      'clone',
+      ExitCode.Precondition,
+      `Source database '${options.from}' must be running`,
+      jsonMode,
+      `Start it with: hayai start ${options.from}`,
+    );
   }
 
   // Validate compatibility
   const compatibilityResult = validateCloneCompatibility(sourceInstance.engine);
   if (!compatibilityResult.compatible) {
-    console.error(
-      chalk.red(`❌ Source engine '${sourceInstance.engine}' is not fully compatible for cloning.`),
+    if (!jsonMode) {
+      showManualCloneGuidance(sourceInstance.engine);
+    }
+    fail(
+      'clone',
+      ExitCode.Precondition,
+      `Source engine '${sourceInstance.engine}' is not fully compatible for cloning: ${compatibilityResult.reason}`,
+      jsonMode,
     );
-    console.error(chalk.red(`Reason: ${compatibilityResult.reason}`));
-    showManualCloneGuidance(sourceInstance.engine);
-    process.exit(1);
   }
 
   // Determine target databases
@@ -300,34 +314,60 @@ async function handleClone(options: CloneOptions): Promise<void> {
   } else if (options.toMultiple) {
     targetNames = options.toMultiple.split(',').map((name) => name.trim());
   } else {
-    console.error(chalk.red('❌ Must specify target database(s)'));
-    console.log(chalk.yellow('💡 Use --to or --to-multiple'));
-    process.exit(1);
+    fail(
+      'clone',
+      ExitCode.Usage,
+      'Must specify target database(s)',
+      jsonMode,
+      'Use --to or --to-multiple',
+    );
   }
 
   // Validate target names
   for (const targetName of targetNames) {
     if (dockerManager.getInstance(targetName)) {
       if (!options.force) {
-        console.error(chalk.red(`❌ Target database '${targetName}' already exists`));
-        console.log(chalk.yellow('💡 Use --force to overwrite existing databases'));
-        process.exit(1);
+        fail(
+          'clone',
+          ExitCode.Conflict,
+          `Target database '${targetName}' already exists`,
+          jsonMode,
+          'Use --force to overwrite existing databases',
+        );
       }
     }
   }
 
   // Show preview
-  console.log(chalk.cyan('\n🔍 Clone Preview:'));
-  console.log(chalk.gray(`Source: ${options.from} (${sourceInstance.engine})`));
-  console.log(chalk.gray(`Targets: ${targetNames.join(', ')}`));
+  if (!jsonMode) {
+    console.log(chalk.cyan('\n🔍 Clone Preview:'));
+    console.log(chalk.gray(`Source: ${options.from} (${sourceInstance.engine})`));
+    console.log(chalk.gray(`Targets: ${targetNames.join(', ')}`));
+  }
 
   if (options.dryRun) {
+    if (jsonMode) {
+      succeed(
+        'clone',
+        { dryRun: true, from: options.from, engine: sourceInstance.engine, targets: targetNames },
+        jsonMode,
+      );
+      return;
+    }
     console.log(chalk.yellow('\n🚧 Dry run - no actual cloning performed'));
     return;
   }
 
-  // Confirmation
+  // Confirmation. --json promises non-interactivity: refuse instead of prompting.
   if (!options.confirm && !options.force) {
+    if (jsonMode) {
+      fail(
+        'clone',
+        ExitCode.Precondition,
+        'Clone requires confirmation: pass -y or --force with --json',
+        jsonMode,
+      );
+    }
     const { proceed } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -344,12 +384,14 @@ async function handleClone(options: CloneOptions): Promise<void> {
   }
 
   // Execute clones
-  const spinner = ora('Cloning databases...').start();
+  const spinner = jsonMode ? null : ora('Cloning databases...').start();
 
   try {
     for (let i = 0; i < targetNames.length; i++) {
       const targetName = targetNames[i];
-      spinner.text = `Cloning ${options.from} → ${targetName} (${i + 1}/${targetNames.length})`;
+      if (spinner) {
+        spinner.text = `Cloning ${options.from} → ${targetName} (${i + 1}/${targetNames.length})`;
+      }
 
       // Remove existing if force
       if (options.force && dockerManager.getInstance(targetName)) {
@@ -365,14 +407,23 @@ async function handleClone(options: CloneOptions): Promise<void> {
       });
     }
 
-    spinner.succeed(`Successfully cloned ${options.from} to ${targetNames.length} database(s)`);
+    spinner?.succeed(`Successfully cloned ${options.from} to ${targetNames.length} database(s)`);
+
+    if (jsonMode) {
+      succeed(
+        'clone',
+        { from: options.from, engine: sourceInstance.engine, targets: targetNames },
+        jsonMode,
+      );
+      return;
+    }
 
     console.log(chalk.green('\n✅ Clone operation completed!'));
     console.log(chalk.yellow('💡 Commands:'));
     console.log(`  • ${chalk.cyan('hayai list')} - View all databases`);
     console.log(`  • ${chalk.cyan('hayai studio')} - Open admin dashboards`);
   } catch (error) {
-    spinner.fail('Clone operation failed');
+    spinner?.fail('Clone operation failed');
     await recordOperation({
       operation: 'clone',
       source: options.from,
@@ -380,8 +431,7 @@ async function handleClone(options: CloneOptions): Promise<void> {
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });
-    console.error(chalk.red('\n❌ Clone failed:'), error instanceof Error ? error.message : error);
-    process.exit(1);
+    failFromError('clone', error, jsonMode);
   }
 }
 
@@ -394,6 +444,7 @@ export const cloneCommand = new Command('clone')
   .option('--force', 'Overwrite existing target databases')
   .option('--dry-run', 'Show what would be cloned without executing')
   .option('--verbose', 'Enable verbose output')
+  .option('--json', 'Machine-readable JSON output on stdout (implies non-interactive)')
   .addHelpText(
     'after',
     `

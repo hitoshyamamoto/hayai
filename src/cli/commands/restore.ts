@@ -11,12 +11,14 @@ import { resolveServiceContainer } from '../../core/containers.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { recordOperation } from '../../core/security.js';
 import { DatabaseInstance } from '../../core/types.js';
+import { ExitCode, fail, failFromError, succeed } from '../cli-output.js';
 
 interface RestoreOptions {
   to?: string;
   force?: boolean;
   confirm?: boolean;
   verbose?: boolean;
+  json?: boolean;
 }
 
 const EMBEDDED_ENGINES = new Set(['sqlite', 'duckdb', 'leveldb', 'lmdb']);
@@ -183,13 +185,19 @@ async function resolveSnapshotPath(input: string): Promise<string> {
 }
 
 async function handleRestore(snapshot: string, options: RestoreOptions): Promise<void> {
+  const jsonMode = Boolean(options.json);
+
   let snapshotPath: string;
   try {
     snapshotPath = await resolveSnapshotPath(snapshot);
   } catch (error) {
-    console.error(chalk.red(`❌ ${error instanceof Error ? error.message : error}`));
-    console.log(chalk.yellow('💡 List snapshots with: ') + chalk.cyan('hayai snapshot list'));
-    process.exit(1);
+    fail(
+      'restore',
+      ExitCode.NotFound,
+      error instanceof Error ? error.message : String(error),
+      jsonMode,
+      'List snapshots with: hayai snapshot list',
+    );
   }
 
   // The snapshot filename encodes the source instance: <name>-snapshot-<ts>.<ext>
@@ -201,29 +209,54 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
 
   const instance = dockerManager.getInstance(targetName);
   if (!instance) {
-    console.error(chalk.red(`❌ Target database '${targetName}' not found`));
-    console.log(chalk.yellow('💡 Pass an existing instance with --to, or run `hayai list`'));
-    process.exit(1);
+    fail(
+      'restore',
+      ExitCode.NotFound,
+      `Target database '${targetName}' not found`,
+      jsonMode,
+      'Pass an existing instance with --to, or run `hayai list`',
+    );
   }
 
   if (!RESTORABLE_ENGINES.has(instance.engine)) {
-    console.error(chalk.red(`❌ Restore is not supported for '${instance.engine}'`));
-    showManualRestoreGuidance(instance.engine);
-    process.exit(1);
+    if (!jsonMode) {
+      showManualRestoreGuidance(instance.engine);
+    }
+    fail(
+      'restore',
+      ExitCode.Precondition,
+      `Restore is not supported for '${instance.engine}'`,
+      jsonMode,
+    );
   }
 
   if (instance.status !== 'running' && instance.status !== 'embedded') {
-    console.error(chalk.red(`❌ Target '${targetName}' must be running to restore into it`));
-    console.log(chalk.yellow(`💡 Start it with: ${chalk.cyan(`hayai start ${targetName}`)}`));
-    process.exit(1);
+    fail(
+      'restore',
+      ExitCode.Precondition,
+      `Target '${targetName}' must be running to restore into it`,
+      jsonMode,
+      `Start it with: hayai start ${targetName}`,
+    );
   }
 
-  console.log(chalk.cyan('\n🔁 Restore Plan:'));
-  console.log(chalk.gray(`Snapshot: ${snapshotPath}`));
-  console.log(chalk.gray(`Target:   ${targetName} (${instance.engine})`));
-  console.log(chalk.yellow('\n⚠️  This overwrites the data currently in the target.'));
+  if (!jsonMode) {
+    console.log(chalk.cyan('\n🔁 Restore Plan:'));
+    console.log(chalk.gray(`Snapshot: ${snapshotPath}`));
+    console.log(chalk.gray(`Target:   ${targetName} (${instance.engine})`));
+    console.log(chalk.yellow('\n⚠️  This overwrites the data currently in the target.'));
+  }
 
   if (!options.confirm && !options.force) {
+    // --json promises non-interactivity: refuse instead of hanging on a prompt.
+    if (jsonMode) {
+      fail(
+        'restore',
+        ExitCode.Precondition,
+        'Restore requires confirmation: pass --force or -y with --json',
+        jsonMode,
+      );
+    }
     const { proceed } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -238,10 +271,10 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
     }
   }
 
-  const spinner = ora(`Restoring into '${targetName}'...`).start();
+  const spinner = jsonMode ? null : ora(`Restoring into '${targetName}'...`).start();
   try {
     await restoreInto(instance, snapshotPath);
-    spinner.succeed(`Restored '${targetName}' from snapshot`);
+    spinner?.succeed(`Restored '${targetName}' from snapshot`);
     await recordOperation({
       operation: 'restore',
       source: path.basename(snapshotPath),
@@ -249,10 +282,19 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
       success: true,
     });
 
+    if (jsonMode) {
+      succeed(
+        'restore',
+        { target: targetName, engine: instance.engine, snapshot: snapshotPath },
+        jsonMode,
+      );
+      return;
+    }
+
     console.log(chalk.green('\n✅ Restore completed!'));
     console.log(chalk.yellow('💡 Verify with: ') + chalk.cyan('hayai studio'));
   } catch (error) {
-    spinner.fail('Restore failed');
+    spinner?.fail('Restore failed');
     await recordOperation({
       operation: 'restore',
       source: path.basename(snapshotPath),
@@ -260,11 +302,7 @@ async function handleRestore(snapshot: string, options: RestoreOptions): Promise
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });
-    console.error(
-      chalk.red('\n❌ Restore failed:'),
-      error instanceof Error ? error.message : error,
-    );
-    process.exit(1);
+    failFromError('restore', error, jsonMode);
   }
 }
 
@@ -275,6 +313,7 @@ export const restoreCommand = new Command('restore')
   .option('-y, --confirm', 'Skip the confirmation prompt')
   .option('--force', 'Skip the confirmation prompt')
   .option('--verbose', 'Enable verbose output')
+  .option('--json', 'Machine-readable JSON output on stdout (implies non-interactive)')
   .addHelpText(
     'after',
     `

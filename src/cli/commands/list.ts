@@ -2,12 +2,14 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { getDockerManager } from '../../core/docker.js';
 import { getTemplate } from '../../core/templates.js';
+import { failFromError, succeed } from '../cli-output.js';
 
 export const listCommand = new Command('list')
   .description('List all database instances')
   .option('-r, --running', 'Show only running instances')
   .option('-s, --stopped', 'Show only stopped instances')
   .option('--format <format>', 'Output format (table, json)', 'table')
+  .option('--json', 'Machine-readable JSON envelope on stdout (see AUTOMATION.md)')
   .action(async (options) => {
     try {
       const dockerManager = getDockerManager();
@@ -19,6 +21,13 @@ export const listCommand = new Command('list')
         instances = dockerManager.getRunningInstances();
       } else if (options.stopped) {
         instances = dockerManager.getStoppedInstances();
+      }
+
+      // Envelope form of the contract; --format json stays as the raw-array
+      // shape it has always emitted.
+      if (options.json) {
+        succeed('list', { instances }, true);
+        return;
       }
 
       if (instances.length === 0) {
@@ -94,10 +103,6 @@ export const listCommand = new Command('list')
       console.log('  • hayai remove <name> - Remove a database');
       console.log('  • hayai studio        - Open admin dashboards');
     } catch (error) {
-      console.error(
-        chalk.red('\n❌ Failed to list databases:'),
-        error instanceof Error ? error.message : error,
-      );
-      process.exit(1);
+      failFromError('list', error, Boolean(options.json));
     }
   });
