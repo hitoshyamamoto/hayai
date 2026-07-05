@@ -86,7 +86,27 @@ export async function destroyProject(projectDir: string): Promise<void> {
     ['compose', '-f', composeFile, 'down', '-v', '--remove-orphans'],
     projectDir,
   ).catch(() => undefined);
-  await rm(projectDir, { recursive: true, force: true });
+  try {
+    await rm(projectDir, { recursive: true, force: true });
+  } catch {
+    // Containers write into the bind mount as root, so the host user cannot
+    // unlink those files. Scrub through a throwaway container instead; never
+    // let cleanup failures mask the actual test outcome.
+    await runDocker(
+      [
+        'run',
+        '--rm',
+        '-v',
+        `${projectDir}:/target`,
+        'alpine:latest',
+        'sh',
+        '-c',
+        'rm -rf /target/* /target/.[!.]* 2>/dev/null || true',
+      ],
+      projectDir,
+    ).catch(() => undefined);
+    await rm(projectDir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 export async function waitFor(
