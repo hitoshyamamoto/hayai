@@ -2,7 +2,12 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
-import { getTemplate, getAvailableTypes, getEnginesByType } from '../../core/templates.js';
+import {
+  getTemplate,
+  getAvailableTypes,
+  getEnginesByType,
+  getOpenSourceInfo,
+} from '../../core/templates.js';
 import { createDatabase, getDockerManager } from '../../core/docker.js';
 import { InitOptions } from '../../core/types.js';
 import { ExitCode, fail, failFromError, succeed } from '../cli-output.js';
@@ -18,6 +23,8 @@ const getDisplayName = (type: string): string => {
     graph: 'Graph',
     search: 'Search',
     embedded: 'Embedded',
+    analytics: 'Analytics',
+    document: 'Document',
   };
   return displayNames[type] || type.toUpperCase();
 };
@@ -180,6 +187,17 @@ export const initCommand = new Command('init')
         console.log(
           chalk.yellow(
             `\n⚠️  ${template.name} is experimental: hayai runs it as a single container, but it needs a multi-node cluster to work properly. Expect it to be partially or non-functional.`,
+          ),
+        );
+      }
+
+      // Source-available engines (TimescaleDB, MongoDB) are documented
+      // exceptions to the open-source catalog — say so at the moment of use.
+      const licenseInfo = getOpenSourceInfo()[config.engine];
+      if (licenseInfo && !licenseInfo.fullyOpenSource && !jsonMode) {
+        console.log(
+          chalk.yellow(
+            `\nℹ️  ${template.name} is source-available, not OSI open source (${licenseInfo.license}). ${licenseInfo.notes}`,
           ),
         );
       }

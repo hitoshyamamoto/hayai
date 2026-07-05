@@ -53,7 +53,8 @@ export interface DatabaseEngine {
     | 'search'
     | 'graph'
     | 'embedded'
-    | 'analytics';
+    | 'analytics'
+    | 'document';
   version: string;
   image: string;
   ports: number[];

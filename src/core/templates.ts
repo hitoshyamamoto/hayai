@@ -506,6 +506,199 @@ export class DatabaseTemplates {
         },
       },
     });
+
+    // ✅ SQL Databases — wave 2
+    this.addTemplate('mysql', {
+      name: 'MySQL',
+      engine: {
+        name: 'mysql',
+        type: 'sql',
+        version: '8.4',
+        image: 'mysql:8.4',
+        ports: [3306],
+        volumes: ['/var/lib/mysql'],
+        environment: {
+          MYSQL_ROOT_PASSWORD: 'rootpassword',
+          MYSQL_DATABASE: 'database',
+          MYSQL_USER: 'admin',
+          MYSQL_PASSWORD: 'password',
+        },
+        healthcheck: {
+          test: 'mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}',
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      },
+    });
+
+    // ✅ Key-Value — wave 2
+    this.addTemplate('valkey', {
+      name: 'Valkey',
+      engine: {
+        name: 'valkey',
+        type: 'keyvalue',
+        version: '8',
+        image: 'valkey/valkey:8-alpine',
+        ports: [6379],
+        volumes: ['/data'],
+        // Unauthenticated, same rationale as redis: no decorative variables.
+        environment: {},
+        healthcheck: {
+          test: 'valkey-cli ping',
+          interval: '10s',
+          timeout: '3s',
+          retries: 5,
+        },
+      },
+    });
+
+    // ✅ Analytics — wave 2
+    this.addTemplate('clickhouse', {
+      name: 'ClickHouse',
+      engine: {
+        name: 'clickhouse',
+        type: 'analytics',
+        version: '24.8',
+        image: 'clickhouse/clickhouse-server:24.8',
+        // 8123 = HTTP (published; the play UI and most clients); 9000 = native
+        ports: [8123, 9000],
+        volumes: ['/var/lib/clickhouse'],
+        environment: {
+          CLICKHOUSE_DB: 'database',
+          CLICKHOUSE_USER: 'admin',
+          CLICKHOUSE_PASSWORD: 'password',
+        },
+        healthcheck: {
+          test: 'clickhouse-client --user ${CLICKHOUSE_USER} --password ${CLICKHOUSE_PASSWORD} --query "SELECT 1"',
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      },
+      admin_dashboard: {
+        enabled: true,
+        path: '/play',
+      },
+    });
+
+    // ✅ Graph — wave 2
+    this.addTemplate('neo4j', {
+      name: 'Neo4j Community',
+      engine: {
+        name: 'neo4j',
+        type: 'graph',
+        version: '5',
+        image: 'neo4j:5',
+        // 7687 (bolt, the client protocol) is published; 7474 (browser UI)
+        // stays internal — hayai publishes a single port per instance, and a
+        // database you can't connect an app to is worse than one without its
+        // web UI. No admin_dashboard is declared for the same reason.
+        ports: [7687, 7474],
+        volumes: ['/data'],
+        environment: {
+          NEO4J_AUTH: 'neo4j/password',
+        },
+        healthcheck: {
+          test: 'wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1',
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      },
+    });
+
+    // ✅ Search — wave 2
+    this.addTemplate('opensearch', {
+      name: 'OpenSearch',
+      engine: {
+        name: 'opensearch',
+        type: 'search',
+        version: '2.19',
+        image: 'opensearchproject/opensearch:2.19.0',
+        ports: [9200],
+        volumes: ['/usr/share/opensearch/data'],
+        environment: {
+          'discovery.type': 'single-node',
+          DISABLE_SECURITY_PLUGIN: 'true',
+          DISABLE_INSTALL_DEMO_CONFIG: 'true',
+          OPENSEARCH_JAVA_OPTS: '-Xms512m -Xmx512m',
+        },
+        healthcheck: {
+          test: 'curl -f http://localhost:9200/_cluster/health || exit 1',
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      },
+    });
+
+    // ✅ Document Databases — wave 2
+    this.addTemplate('couchdb', {
+      name: 'Apache CouchDB',
+      engine: {
+        name: 'couchdb',
+        type: 'document',
+        version: '3.4',
+        image: 'couchdb:3.4',
+        ports: [5984],
+        volumes: ['/opt/couchdb/data'],
+        environment: {
+          COUCHDB_USER: 'admin',
+          COUCHDB_PASSWORD: 'password',
+        },
+        healthcheck: {
+          test: 'curl -f http://localhost:5984/_up || exit 1',
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      },
+      admin_dashboard: {
+        enabled: true,
+        path: '/_utils',
+      },
+    });
+
+    // ⚠️ Source-available (SSPL) — documented exception, see README
+    this.addTemplate('mongodb', {
+      name: 'MongoDB',
+      engine: {
+        name: 'mongodb',
+        type: 'document',
+        version: '8',
+        image: 'mongo:8',
+        ports: [27017],
+        volumes: ['/data/db'],
+        environment: {
+          MONGO_INITDB_ROOT_USERNAME: 'admin',
+          MONGO_INITDB_ROOT_PASSWORD: 'password',
+          MONGO_INITDB_DATABASE: 'database',
+        },
+        healthcheck: {
+          test: 'mongosh --quiet --eval "db.adminCommand({ping: 1})"',
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      },
+    });
+
+    // ✅ Vector — wave 2
+    this.addTemplate('chroma', {
+      name: 'Chroma',
+      engine: {
+        name: 'chroma',
+        type: 'vector',
+        version: 'latest',
+        image: 'chromadb/chroma:latest',
+        ports: [8000],
+        volumes: ['/chroma/chroma'],
+        environment: {},
+        // No healthcheck: the slim image ships neither curl nor wget, and a
+        // check that can never pass reads as a permanently unhealthy service.
+      },
+    });
   }
 
   private static addTemplate(key: string, template: DatabaseTemplate): void {
@@ -671,6 +864,46 @@ export class DatabaseTemplates {
         fullyOpenSource: true,
         notes: 'Apache HoraeDB - Distributed, cloud-native, in incubation',
       },
+      mysql: {
+        license: 'GPL v2 (Community Edition)',
+        fullyOpenSource: true,
+        notes: 'The most widely deployed open-source database',
+      },
+      valkey: {
+        license: 'BSD 3-Clause',
+        fullyOpenSource: true,
+        notes: 'Linux Foundation fork of Redis, created after the 2024 relicense',
+      },
+      clickhouse: {
+        license: 'Apache 2.0',
+        fullyOpenSource: true,
+        notes: 'Columnar OLAP database for real-time analytics',
+      },
+      neo4j: {
+        license: 'GPL v3 (Community Edition)',
+        fullyOpenSource: true,
+        notes: 'Most widely used graph database; Enterprise features are commercial',
+      },
+      opensearch: {
+        license: 'Apache 2.0',
+        fullyOpenSource: true,
+        notes: 'Community fork of Elasticsearch/Kibana',
+      },
+      couchdb: {
+        license: 'Apache 2.0',
+        fullyOpenSource: true,
+        notes: 'Document store with offline-first replication',
+      },
+      mongodb: {
+        license: 'SSPL v1 (source-available)',
+        fullyOpenSource: false,
+        notes: 'SSPL is not OSI-approved — included as a documented exception for its ubiquity',
+      },
+      chroma: {
+        license: 'Apache 2.0',
+        fullyOpenSource: true,
+        notes: 'Vector database popular in AI/LLM workflows',
+      },
     };
   }
 }
@@ -721,7 +954,9 @@ const TIER1_ENGINES = new Set([
   'postgresql',
   'timescaledb',
   'mariadb',
+  'mysql',
   'redis',
+  'valkey',
   'sqlite',
   'duckdb',
   'leveldb',
