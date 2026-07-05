@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { DatabaseInstance, DatabaseTemplate, ComposeFile } from './types.js';
 import { getConfig, getComposeFilePath, getDataDirectory } from './config.js';
 import { allocatePort, deallocatePort } from './port-manager.js';
+import { withStateLock } from './lock.js';
 
 interface DockerVerificationResult {
   isInstalled: boolean;
@@ -14,6 +15,15 @@ interface DockerVerificationResult {
   composeAvailable?: boolean;
   version?: string;
   error?: string;
+}
+
+// Thrown instead of exiting so commands can map it to the documented
+// Environment exit code (and emit a JSON envelope in --json mode).
+export class DockerNotReadyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DockerNotReadyError';
+  }
 }
 
 export class DockerManager {
@@ -118,84 +128,87 @@ export class DockerManager {
   }
 
   private showDockerInstallationInstructions(result: DockerVerificationResult): void {
-    console.log(chalk.red('\n❌ Docker Setup Required\n'));
+    console.error(chalk.red('\n❌ Docker Setup Required\n'));
 
     if (!result.isInstalled) {
-      console.log(chalk.yellow('🐳 Docker is not installed on your system.'));
-      console.log(chalk.gray('Hayai requires Docker to manage database containers.\n'));
+      console.error(chalk.yellow('🐳 Docker is not installed on your system.'));
+      console.error(chalk.gray('Hayai requires Docker to manage database containers.\n'));
 
-      console.log(chalk.bold('📦 Installation Instructions:\n'));
+      console.error(chalk.bold('📦 Installation Instructions:\n'));
 
       const platform = process.platform;
 
       switch (platform) {
         case 'darwin': // macOS
-          console.log(chalk.cyan('macOS:'));
-          console.log(
+          console.error(chalk.cyan('macOS:'));
+          console.error(
             '  • Download Docker Desktop: https://docs.docker.com/desktop/install/mac-install/',
           );
-          console.log('  • Or install via Homebrew: brew install --cask docker');
+          console.error('  • Or install via Homebrew: brew install --cask docker');
           break;
 
         case 'win32': // Windows
-          console.log(chalk.cyan('Windows:'));
-          console.log(
+          console.error(chalk.cyan('Windows:'));
+          console.error(
             '  • Download Docker Desktop: https://docs.docker.com/desktop/install/windows-install/',
           );
-          console.log('  • Or install via Chocolatey: choco install docker-desktop');
-          console.log('  • Or install via Winget: winget install Docker.DockerDesktop');
+          console.error('  • Or install via Chocolatey: choco install docker-desktop');
+          console.error('  • Or install via Winget: winget install Docker.DockerDesktop');
           break;
 
         default: // Linux
-          console.log(chalk.cyan('Linux:'));
-          console.log('  • Ubuntu/Debian: curl -fsSL https://get.docker.com | sh');
-          console.log('  • Fedora: sudo dnf install docker-ce docker-ce-cli containerd.io');
-          console.log('  • Arch: sudo pacman -S docker docker-compose');
-          console.log(
+          console.error(chalk.cyan('Linux:'));
+          console.error('  • Ubuntu/Debian: curl -fsSL https://get.docker.com | sh');
+          console.error('  • Fedora: sudo dnf install docker-ce docker-ce-cli containerd.io');
+          console.error('  • Arch: sudo pacman -S docker docker-compose');
+          console.error(
             '  • Or use Docker Desktop: https://docs.docker.com/desktop/install/linux-install/',
           );
           break;
       }
     } else if (result.isRunning && result.composeAvailable === false) {
-      console.log(chalk.yellow('🐳 Docker is running but the Compose V2 plugin is missing.'));
-      console.log(chalk.gray(`Version: ${result.version}\n`));
+      console.error(chalk.yellow('🐳 Docker is running but the Compose V2 plugin is missing.'));
+      console.error(chalk.gray(`Version: ${result.version}\n`));
 
-      console.log(chalk.bold('📦 Install Docker Compose V2:\n'));
-      console.log(
+      console.error(chalk.bold('📦 Install Docker Compose V2:\n'));
+      console.error(
         chalk.cyan('  • Docker Desktop: update to a recent version (Compose V2 is included)'),
       );
-      console.log(chalk.cyan('  • Debian/Ubuntu: sudo apt-get install docker-compose-plugin'));
-      console.log(chalk.cyan('  • Other platforms: https://docs.docker.com/compose/install/'));
+      console.error(chalk.cyan('  • Debian/Ubuntu: sudo apt-get install docker-compose-plugin'));
+      console.error(chalk.cyan('  • Other platforms: https://docs.docker.com/compose/install/'));
     } else if (!result.isRunning) {
-      console.log(chalk.yellow('🐳 Docker is installed but not running.'));
-      console.log(chalk.gray(`Version: ${result.version}\n`));
+      console.error(chalk.yellow('🐳 Docker is installed but not running.'));
+      console.error(chalk.gray(`Version: ${result.version}\n`));
 
-      console.log(chalk.bold('🚀 Start Docker:\n'));
+      console.error(chalk.bold('🚀 Start Docker:\n'));
 
       const platform = process.platform;
 
       switch (platform) {
         case 'darwin': // macOS
         case 'win32': // Windows
-          console.log(chalk.cyan('• Start Docker Desktop application'));
-          console.log(chalk.cyan('• Wait for Docker to fully initialize'));
+          console.error(chalk.cyan('• Start Docker Desktop application'));
+          console.error(chalk.cyan('• Wait for Docker to fully initialize'));
           break;
 
         default: // Linux
-          console.log(chalk.cyan('• sudo systemctl start docker'));
-          console.log(chalk.cyan('• sudo systemctl enable docker  # Enable auto-start'));
-          console.log(chalk.cyan('• Or start Docker Desktop if installed'));
+          console.error(chalk.cyan('• sudo systemctl start docker'));
+          console.error(chalk.cyan('• sudo systemctl enable docker  # Enable auto-start'));
+          console.error(chalk.cyan('• Or start Docker Desktop if installed'));
           break;
       }
     }
 
-    console.log(
+    console.error(
       chalk.yellow('\n💡 After installing/starting Docker, try running your command again.'),
     );
-    console.log(chalk.gray('🔍 Verify Docker: docker --version && docker info\n'));
+    console.error(chalk.gray('🔍 Verify Docker: docker --version && docker info\n'));
   }
 
-  private async verifyDockerSetup(): Promise<void> {
+  // Verified lazily, only on the first operation that actually talks to the
+  // daemon. Embedded engines and read-only commands (list, connect, init)
+  // work without Docker at all.
+  public async ensureDockerReady(): Promise<void> {
     if (this.dockerVerified) {
       return; // Already verified in this session
     }
@@ -204,7 +217,7 @@ export class DockerManager {
 
     if (!result.isInstalled || !result.isRunning || !result.composeAvailable) {
       this.showDockerInstallationInstructions(result);
-      process.exit(1);
+      throw new DockerNotReadyError(result.error || 'Docker is not available');
     }
 
     // Docker is ready
@@ -225,11 +238,19 @@ export class DockerManager {
   }
 
   public async initialize(): Promise<void> {
-    // Verify Docker setup before doing anything else
-    await this.verifyDockerSetup();
-
     await this.loadExistingInstances();
     await this.loadComposeFile();
+  }
+
+  // All read-modify-write cycles over the local state go through here:
+  // reloading inside the lock is what makes concurrent hayai processes safe —
+  // without it, a stale in-memory map would overwrite the other process's
+  // changes on save.
+  private async mutateState<T>(fn: () => Promise<T>): Promise<T> {
+    return withStateLock(async () => {
+      await this.loadExistingInstances();
+      return await fn();
+    });
   }
 
   public async createDatabase(
@@ -241,49 +262,51 @@ export class DockerManager {
       customEnv?: Record<string, string>;
     } = {},
   ): Promise<DatabaseInstance> {
-    // Validate name
-    if (this.instances.has(name)) {
-      throw new Error(`Database instance '${name}' already exists`);
-    }
+    return this.mutateState(async () => {
+      // Validate name against the just-reloaded state, not a stale snapshot
+      if (this.instances.has(name)) {
+        throw new Error(`Database instance '${name}' already exists`);
+      }
 
-    // Embedded engines are plain files on the host — no container, no port
-    const isEmbedded = template.engine.ports.length === 0;
+      // Embedded engines are plain files on the host — no container, no port
+      const isEmbedded = template.engine.ports.length === 0;
 
-    let port = 0;
-    if (!isEmbedded && this.getDefaultPortForEngine(template.engine.name) > 0) {
-      port = await allocatePort(name, options.port);
-    }
+      let port = 0;
+      if (!isEmbedded && this.getDefaultPortForEngine(template.engine.name) > 0) {
+        port = await allocatePort(name, options.port);
+      }
 
-    // Create data directory
-    const dataDir = await getDataDirectory();
-    const instanceDataDir = path.join(dataDir, name);
-    await mkdir(instanceDataDir, { recursive: true });
+      // Create data directory
+      const dataDir = await getDataDirectory();
+      const instanceDataDir = path.join(dataDir, name);
+      await mkdir(instanceDataDir, { recursive: true });
 
-    // Create database instance
-    const instance: DatabaseInstance = {
-      name,
-      engine: template.engine.name,
-      port,
-      volume: instanceDataDir,
-      environment: {
-        ...template.engine.environment,
-        ...options.customEnv,
-      },
-      status: isEmbedded ? 'embedded' : 'stopped',
-      created_at: new Date().toISOString(),
-      connection_uri: this.generateConnectionUri(template, port, name, instanceDataDir),
-    };
+      // Create database instance
+      const instance: DatabaseInstance = {
+        name,
+        engine: template.engine.name,
+        port,
+        volume: instanceDataDir,
+        environment: {
+          ...template.engine.environment,
+          ...options.customEnv,
+        },
+        status: isEmbedded ? 'embedded' : 'stopped',
+        created_at: new Date().toISOString(),
+        connection_uri: this.generateConnectionUri(template, port, name, instanceDataDir),
+      };
 
-    // Add to instances
-    this.instances.set(name, instance);
+      // Add to instances
+      this.instances.set(name, instance);
 
-    // Update compose file
-    await this.updateComposeFile();
+      // Update compose file
+      await this.updateComposeFile();
 
-    // Save instances
-    await this.saveInstances();
+      // Save instances
+      await this.saveInstances();
 
-    return instance;
+      return instance;
+    });
   }
 
   public async removeDatabase(name: string, options: { keepData?: boolean } = {}): Promise<void> {
@@ -292,6 +315,8 @@ export class DockerManager {
       throw new Error(`Database instance '${name}' not found`);
     }
 
+    // Container teardown happens outside the state lock: a graceful stop can
+    // take many seconds and must not block concurrent hayai processes.
     if (instance.status !== 'embedded') {
       const serviceName = `${name}-db`;
 
@@ -304,22 +329,24 @@ export class DockerManager {
       }
     }
 
-    // Deallocate port if it was allocated
-    if (instance.port > 0) {
-      await deallocatePort(instance.port);
-    }
+    await this.mutateState(async () => {
+      // Deallocate port if it was allocated
+      if (instance.port > 0) {
+        await deallocatePort(instance.port);
+      }
 
-    // Remove from instances
-    this.instances.delete(name);
+      // Remove from instances
+      this.instances.delete(name);
 
-    // Clean up data directory unless the caller asked to keep it
-    if (!options.keepData && (await this.pathExists(instance.volume))) {
-      await rm(instance.volume, { recursive: true });
-    }
+      // Clean up data directory unless the caller asked to keep it
+      if (!options.keepData && (await this.pathExists(instance.volume))) {
+        await rm(instance.volume, { recursive: true });
+      }
 
-    // Update compose file and save instances
-    await this.updateComposeFile();
-    await this.saveInstances();
+      // Update compose file and save instances
+      await this.updateComposeFile();
+      await this.saveInstances();
+    });
   }
 
   public async startDatabase(name: string): Promise<void> {
@@ -337,22 +364,36 @@ export class DockerManager {
       return;
     }
 
-    // Ensure compose file is up to date
-    await this.updateComposeFile();
+    // Regenerate the compose file from fresh state so a concurrent process's
+    // instances aren't dropped from it.
+    await this.mutateState(() => this.updateComposeFile());
 
     const serviceName = `${name}-db`;
 
     try {
+      // The compose call (which may pull images for minutes) runs outside the
+      // state lock; only the status write is serialized.
       await this.executeDockerCompose(['up', '-d', serviceName]);
-      instance.status = 'running';
-      this.instances.set(name, instance);
-      await this.saveInstances();
+      await this.setInstanceStatus(name, 'running');
     } catch (error) {
-      instance.status = 'error';
-      this.instances.set(name, instance);
-      await this.saveInstances();
+      await this.setInstanceStatus(name, 'error');
+      if (error instanceof DockerNotReadyError) {
+        throw error; // keep the Environment classification for the CLI layer
+      }
       throw new Error(`Failed to start database '${name}': ${error}`);
     }
+  }
+
+  private async setInstanceStatus(name: string, status: DatabaseInstance['status']): Promise<void> {
+    await this.mutateState(async () => {
+      const current = this.instances.get(name);
+      if (!current || current.status === 'embedded') {
+        return;
+      }
+      current.status = status;
+      this.instances.set(name, current);
+      await this.saveInstances();
+    });
   }
 
   public async stopDatabase(name: string): Promise<void> {
@@ -366,25 +407,25 @@ export class DockerManager {
       return;
     }
 
-    // Ensure compose file exists
-    await this.updateComposeFile();
+    // Ensure compose file exists, regenerated from fresh state
+    await this.mutateState(() => this.updateComposeFile());
 
     const serviceName = `${name}-db`;
 
     try {
       await this.executeDockerCompose(['stop', serviceName]);
-      instance.status = 'stopped';
-      this.instances.set(name, instance);
-      await this.saveInstances();
+      await this.setInstanceStatus(name, 'stopped');
     } catch (error) {
-      instance.status = 'error';
-      this.instances.set(name, instance);
-      await this.saveInstances();
+      await this.setInstanceStatus(name, 'error');
+      if (error instanceof DockerNotReadyError) {
+        throw error; // keep the Environment classification for the CLI layer
+      }
       throw new Error(`Failed to stop database '${name}': ${error}`);
     }
   }
 
   private async executeDockerCompose(args: string[]): Promise<string> {
+    await this.ensureDockerReady();
     const composeFilePath = await getComposeFilePath();
 
     return new Promise((resolve, reject) => {
@@ -417,48 +458,42 @@ export class DockerManager {
     });
   }
 
-  public async startAllDatabases(): Promise<void> {
-    try {
-      // Ensure compose file is up to date
-      await this.updateComposeFile();
+  private async setAllInstanceStatuses(status: DatabaseInstance['status']): Promise<void> {
+    await this.mutateState(async () => {
+      for (const [name, instance] of this.instances) {
+        if (instance.status === 'embedded') continue;
+        instance.status = status;
+        this.instances.set(name, instance);
+      }
+      await this.saveInstances();
+    });
+  }
 
+  public async startAllDatabases(): Promise<void> {
+    // Regenerate the compose file from fresh state before touching Docker
+    await this.mutateState(() => this.updateComposeFile());
+    try {
       await this.executeDockerCompose(['up', '-d']);
-      for (const [name, instance] of this.instances) {
-        if (instance.status === 'embedded') continue;
-        instance.status = 'running';
-        this.instances.set(name, instance);
-      }
-      await this.saveInstances();
+      await this.setAllInstanceStatuses('running');
     } catch (error) {
-      for (const [name, instance] of this.instances) {
-        if (instance.status === 'embedded') continue;
-        instance.status = 'error';
-        this.instances.set(name, instance);
+      await this.setAllInstanceStatuses('error');
+      if (error instanceof DockerNotReadyError) {
+        throw error;
       }
-      await this.saveInstances();
       throw new Error(`Failed to start databases: ${error}`);
     }
   }
 
   public async stopAllDatabases(): Promise<void> {
+    await this.mutateState(() => this.updateComposeFile());
     try {
-      // Ensure compose file exists
-      await this.updateComposeFile();
-
       await this.executeDockerCompose(['stop']);
-      for (const [name, instance] of this.instances) {
-        if (instance.status === 'embedded') continue;
-        instance.status = 'stopped';
-        this.instances.set(name, instance);
-      }
-      await this.saveInstances();
+      await this.setAllInstanceStatuses('stopped');
     } catch (error) {
-      for (const [name, instance] of this.instances) {
-        if (instance.status === 'embedded') continue;
-        instance.status = 'error';
-        this.instances.set(name, instance);
+      await this.setAllInstanceStatuses('error');
+      if (error instanceof DockerNotReadyError) {
+        throw error;
       }
-      await this.saveInstances();
       throw new Error(`Failed to stop databases: ${error}`);
     }
   }
