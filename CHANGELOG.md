@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/airflow/`: the canonical ephemeral-staging DAG (provision → ETL →
   snapshot → unconditional teardown) plus the connection-generation and
   scheduled-maintenance patterns, all on plain BashOperator.
+- Eight new engines (22 → 30, new `document` category): **MySQL 8.4** and
+  **Valkey 8** land directly in Tier 1 — they reuse the verified
+  MariaDB/Redis data paths with each image's native client binaries
+  (mysqldump/mysql, valkey-cli) and ship their own end-to-end suites.
+  **ClickHouse** (with the `/play` UI in `hayai studio`), **Neo4j Community**
+  (bolt published; browser UI stays internal — hayai publishes one port per
+  instance), **OpenSearch** (single-node, security off for dev),
+  **Apache CouchDB** (Fauxton in `studio`), **Chroma**, and **MongoDB** —
+  the second documented source-available exception (SSPL) alongside
+  TimescaleDB, flagged by `init` at the moment of use.
 
 ### Fixed
 - All data commands (`snapshot`, `restore`, `clone`, `merge`) addressed

@@ -16,7 +16,7 @@
   
   ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
   ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
-  ![Databases](https://img.shields.io/badge/Databases-22-success)
+  ![Databases](https://img.shields.io/badge/Databases-30-success)
   ![CLI](https://img.shields.io/badge/CLI-Tool-blue)
   
   ![Security](https://img.shields.io/badge/Security-0%20vulnerabilities-brightgreen)
@@ -91,7 +91,7 @@ hayai studio
 
 ## 🎯 Key Features
 
-- **🔓 Open-Source Focused**: Open-source engines (one source-available: TimescaleDB)
+- **🔓 Open-Source Focused**: Open-source engines (two source-available exceptions, flagged at init: TimescaleDB, MongoDB)
 - **⚡ One Command Setup**: Initialize any database with a single command
 - **🐳 Docker-Powered**: Automated container management with health checks
 - **📁 Embedded Engines as Files**: SQLite, DuckDB, LevelDB, and LMDB are managed as plain host files — no container overhead
@@ -102,19 +102,21 @@ hayai studio
 
 ## 📦 Supported Databases
 
-All databases are **100% open-source** with permissive licenses:
+All engines are open-source, with two documented source-available exceptions (TimescaleDB under TSL, MongoDB under SSPL) that hayai flags at `init`: 
 
 <details>
-<summary><strong>SQL Databases (2)</strong></summary>
+<summary><strong>SQL Databases (3)</strong></summary>
 
 - **PostgreSQL** (PostgreSQL License) - Most popular open-source relational database
+- **MySQL** (GPL v2) - The most widely deployed open-source database
 - **MariaDB** (GPL v2) - MySQL community fork with enhanced features
 </details>
 
 <details>
-<summary><strong>Analytics Databases (1)</strong></summary>
+<summary><strong>Analytics Databases (2)</strong></summary>
 
 - **DuckDB** (MIT) - Analytics-focused columnar SQL database for OLAP workloads
+- **ClickHouse** (Apache 2.0) - Columnar OLAP database for real-time analytics
 </details>
 
 <details>
@@ -125,9 +127,10 @@ All databases are **100% open-source** with permissive licenses:
 </details>
 
 <details>
-<summary><strong>Key-Value Databases (3)</strong></summary>
+<summary><strong>Key-Value Databases (4)</strong></summary>
 
 - **Redis** (BSD 3-Clause) - High-performance in-memory key-value store
+- **Valkey** (BSD 3-Clause) - Linux Foundation fork of Redis, born after the 2024 relicense
 - **LevelDB** (BSD) - High-performance embedded key-value storage library
 - **TiKV** (Apache 2.0) - CNCF graduated distributed transactional key-value store
 </details>
@@ -139,25 +142,35 @@ All databases are **100% open-source** with permissive licenses:
 </details>
 
 <details>
-<summary><strong>Vector Databases (3)</strong></summary>
+<summary><strong>Vector Databases (4)</strong></summary>
 
 - **Qdrant** (Apache 2.0) - Vector database with REST API
+- **Chroma** (Apache 2.0) - Vector database popular in AI/LLM workflows
 - **Weaviate** (BSD 3-Clause) - Vector search engine with ML models
 - **Milvus** (Apache 2.0) - Vector database for AI applications
 </details>
 
 <details>
-<summary><strong>Graph Databases (2)</strong></summary>
+<summary><strong>Graph Databases (3)</strong></summary>
 
+- **Neo4j Community** (GPL v3) - The most widely used graph database
 - **ArangoDB** (Apache 2.0) - Multi-model database (graph, document, key-value)
 - **NebulaGraph** (Apache 2.0) - Distributed graph database with millisecond latency
 </details>
 
 <details>
-<summary><strong>Search Databases (2)</strong></summary>
+<summary><strong>Search Databases (3)</strong></summary>
 
 - **Meilisearch** (MIT) - Modern full-text search engine
 - **Typesense** (GPL v3) - Fast, typo-tolerant search engine
+- **OpenSearch** (Apache 2.0) - Community fork of Elasticsearch
+</details>
+
+<details>
+<summary><strong>Document Databases (2)</strong></summary>
+
+- **Apache CouchDB** (Apache 2.0) - Document store with offline-first replication
+- **MongoDB** (SSPL, source-available) - The most popular document database — documented licensing exception
 </details>
 
 <details>
@@ -171,7 +184,7 @@ All databases are **100% open-source** with permissive licenses:
 - **Apache HoraeDB** (Apache 2.0) - Cloud-native distributed time series database
 </details>
 
-**Total: 22 databases across 9 categories**
+**Total: 30 databases across 10 categories**
 
 ## 🎯 Engine Support Matrix
 
@@ -185,11 +198,14 @@ best-effort and not yet covered by the integration suite.
 | PostgreSQL | **1** | ✅ `pg_dump` | ✅ | ✅ | ✅ (target wins conflicts) |
 | TimescaleDB | **1** | ✅ `pg_dump` | ✅ | manual | manual |
 | MariaDB | **1** | ✅ `mariadb-dump` | ✅ | ✅ | ✅ (target wins conflicts) |
+| MySQL | **1** | ✅ `mysqldump` | ✅ | ✅ | ✅ (target wins conflicts) |
 | Redis | **1** | ✅ RDB | ✅ | ✅ | ✅ (source wins conflicts) |
+| Valkey | **1** | ✅ RDB | ✅ | ✅ | ✅ (source wins conflicts) |
 | SQLite, DuckDB, LevelDB, LMDB | **1** | ✅ archive | ✅ | ✅ file copy | — |
 | InfluxDB 2.x / 3 | 2 | ✅ `influx backup` | manual | manual | — |
 | Cassandra | 2 | ✅ `nodetool` | manual | manual | — |
 | Qdrant, Weaviate, ArangoDB, Meilisearch, Typesense, QuestDB, VictoriaMetrics, HoraeDB | 2 | ⚠️ generic archive¹ | manual | manual | — |
+| ClickHouse, Neo4j, OpenSearch, CouchDB, Chroma, MongoDB | 2 | ⚠️ generic archive¹ | manual | manual | — |
 | TiKV, Milvus, NebulaGraph | 2 (experimental²) | ⚠️ generic archive¹ | manual | manual | — |
 
 ¹ A `tar` of the running container's data directory — fine for dev checkpoints,
