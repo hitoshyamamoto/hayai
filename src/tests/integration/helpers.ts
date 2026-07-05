@@ -18,11 +18,12 @@ function run(
   args: string[],
   cwd: string,
   timeoutMs = 180_000,
+  envOverrides: Record<string, string> = {},
 ): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', CI: 'true' },
+      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', CI: 'true', ...envOverrides },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -50,8 +51,13 @@ function run(
   });
 }
 
-export function runCli(args: string[], cwd: string, timeoutMs?: number): Promise<CliResult> {
-  return run(process.execPath, [CLI_PATH, ...args], cwd, timeoutMs);
+export function runCli(
+  args: string[],
+  cwd: string,
+  timeoutMs?: number,
+  envOverrides?: Record<string, string>,
+): Promise<CliResult> {
+  return run(process.execPath, [CLI_PATH, ...args], cwd, timeoutMs, envOverrides);
 }
 
 export function runDocker(args: string[], cwd: string, timeoutMs?: number): Promise<CliResult> {
