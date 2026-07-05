@@ -642,12 +642,35 @@ export class DockerManager {
         return `postgresql://${env.POSTGRES_USER}:${env.POSTGRES_PASSWORD}@localhost:${port}/${env.POSTGRES_DB}`;
 
       case 'mariadb':
+      case 'mysql':
         return `mysql://${env.MYSQL_USER}:${env.MYSQL_PASSWORD}@localhost:${port}/${env.MYSQL_DATABASE}`;
 
       case 'redis':
         // Unauthenticated by design — the image ignores REDIS_PASSWORD, so a
         // credentialed URI here would just be a false promise.
         return `redis://localhost:${port}`;
+
+      case 'valkey':
+        return `redis://localhost:${port}`;
+
+      case 'mongodb':
+        return `mongodb://${env.MONGO_INITDB_ROOT_USERNAME}:${env.MONGO_INITDB_ROOT_PASSWORD}@localhost:${port}/${env.MONGO_INITDB_DATABASE}?authSource=admin`;
+
+      case 'couchdb':
+        return `http://${env.COUCHDB_USER}:${env.COUCHDB_PASSWORD}@localhost:${port}`;
+
+      case 'neo4j':
+        // Bolt is the published port; NEO4J_AUTH is 'user/password'
+        return `bolt://${(env.NEO4J_AUTH || 'neo4j/password').replace('/', ':')}@localhost:${port}`;
+
+      case 'clickhouse':
+        return `http://${env.CLICKHOUSE_USER}:${env.CLICKHOUSE_PASSWORD}@localhost:${port}/${env.CLICKHOUSE_DB}`;
+
+      case 'opensearch':
+        return `http://localhost:${port}`;
+
+      case 'chroma':
+        return `http://localhost:${port}`;
 
       case 'cassandra':
         return `cassandra://localhost:${port}`;
