@@ -11,6 +11,7 @@ import { getTemplate } from '../../core/templates.js';
 import { getPostgresExecCredentials, getMariaDBRootPassword } from '../../core/credentials.js';
 import { recordOperation } from '../../core/security.js';
 import { DatabaseInstance, SnapshotOptions } from '../../core/types.js';
+import { ExitCode, fail, failFromError, succeed } from '../cli-output.js';
 
 async function createSnapshotDirectory(dir: string): Promise<void> {
   try {
@@ -313,36 +314,48 @@ export const snapshotCommand = new Command('snapshot')
   .description('Create snapshots of database instances')
   .argument('<name>', 'Database instance name')
   .option('-o, --output <path>', 'Output directory for snapshots', './snapshots')
-  .action(async (name: string, options: SnapshotOptions) => {
+  .option('--json', 'Machine-readable JSON output on stdout')
+  .action(async (name: string, options: SnapshotOptions & { json?: boolean }) => {
+    const jsonMode = Boolean(options.json);
     try {
       const dockerManager = getDockerManager();
       await dockerManager.initialize();
 
       const instance = dockerManager.getInstance(name);
       if (!instance) {
-        console.error(chalk.red(`❌ Database instance '${name}' not found`));
-        console.log(chalk.yellow('💡 Run `hayai list` to see available databases'));
-        process.exit(1);
+        fail(
+          'snapshot',
+          ExitCode.NotFound,
+          `Database instance '${name}' not found`,
+          jsonMode,
+          'Run `hayai list` to see available databases',
+        );
       }
 
       if (instance.status !== 'running' && instance.status !== 'embedded') {
-        console.error(chalk.red(`❌ Database '${name}' must be running to create snapshot`));
-        console.log(chalk.yellow(`💡 Start it with: ${chalk.cyan(`hayai start ${name}`)}`));
-        process.exit(1);
+        fail(
+          'snapshot',
+          ExitCode.Precondition,
+          `Database '${name}' must be running to create snapshot`,
+          jsonMode,
+          `Start it with: hayai start ${name}`,
+        );
       }
 
       const outputDir = options.output || './snapshots';
 
-      console.log(chalk.cyan(`📸 Creating snapshot of '${name}'...`));
-      console.log(chalk.gray(`Engine: ${instance.engine}`));
+      if (!jsonMode) {
+        console.log(chalk.cyan(`📸 Creating snapshot of '${name}'...`));
+        console.log(chalk.gray(`Engine: ${instance.engine}`));
+      }
 
-      const spinner = ora('Creating snapshot...').start();
+      const spinner = jsonMode ? null : ora('Creating snapshot...').start();
 
       let snapshotPath: string;
       try {
         snapshotPath = await snapshotInstance(instance, outputDir);
       } catch (error) {
-        spinner.fail('Snapshot failed');
+        spinner?.fail('Snapshot failed');
         await recordOperation({
           operation: 'snapshot',
           source: name,
@@ -355,13 +368,27 @@ export const snapshotCommand = new Command('snapshot')
       const stats = await fs.stat(snapshotPath);
       const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
-      spinner.succeed(`Snapshot created successfully (${fileSizeMB} MB)`);
+      spinner?.succeed(`Snapshot created successfully (${fileSizeMB} MB)`);
       await recordOperation({
         operation: 'snapshot',
         source: name,
         target: snapshotPath,
         success: true,
       });
+
+      if (jsonMode) {
+        succeed(
+          'snapshot',
+          {
+            source: name,
+            engine: instance.engine,
+            snapshot: snapshotPath,
+            sizeMB: Number(fileSizeMB),
+          },
+          jsonMode,
+        );
+        return;
+      }
 
       console.log(chalk.gray(`Output: ${snapshotPath}`));
       console.log(chalk.green('\n✅ Snapshot completed!'));
@@ -371,11 +398,7 @@ export const snapshotCommand = new Command('snapshot')
         `  • ${chalk.cyan(`hayai restore ${path.basename(snapshotPath)}`)} - Restore this snapshot`,
       );
     } catch (error) {
-      console.error(
-        chalk.red('❌ Snapshot failed:'),
-        error instanceof Error ? error.message : error,
-      );
-      process.exit(1);
+      failFromError('snapshot', error, jsonMode);
     }
   });
 

@@ -3,8 +3,9 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import ora from 'ora';
 import { getTemplate, getAvailableTypes, getEnginesByType } from '../../core/templates.js';
-import { createDatabase } from '../../core/docker.js';
+import { createDatabase, getDockerManager } from '../../core/docker.js';
 import { InitOptions } from '../../core/types.js';
+import { ExitCode, fail, failFromError, succeed } from '../cli-output.js';
 
 // Map technical types to user-friendly display names
 const getDisplayName = (type: string): string => {
@@ -21,15 +22,35 @@ const getDisplayName = (type: string): string => {
   return displayNames[type] || type.toUpperCase();
 };
 
+interface InitCommandOptions extends InitOptions {
+  existsOk?: boolean;
+  json?: boolean;
+}
+
 export const initCommand = new Command('init')
   .description('Initialize a new database instance')
   .option('-n, --name <name>', 'Database instance name')
   .option('-e, --engine <engine>', 'Database engine (postgresql, mariadb, redis, etc.)')
   .option('-p, --port <port>', 'Custom port number', parseInt)
   .option('-y, --yes', 'Skip interactive prompts and use defaults')
-  .action(async (options: InitOptions) => {
+  .option(
+    '--exists-ok',
+    'Exit 0 without changes if an instance with this name and engine already exists',
+  )
+  .option('--json', 'Machine-readable JSON output on stdout (implies non-interactive)')
+  .action(async (options: InitCommandOptions) => {
+    const jsonMode = Boolean(options.json);
     try {
-      const spinner = ora('Initializing database...').start();
+      // --json is a promise to never block on a prompt: with the required
+      // inputs missing there is nothing valid to do but refuse.
+      if (jsonMode && (!options.name || !options.engine)) {
+        fail(
+          'init',
+          ExitCode.Usage,
+          '--json requires --name and --engine (prompts are disabled)',
+          jsonMode,
+        );
+      }
 
       let config: {
         name: string;
@@ -37,17 +58,15 @@ export const initCommand = new Command('init')
         port?: number;
       };
 
-      if (options.yes && options.name && options.engine) {
+      if ((options.yes || jsonMode) && options.name && options.engine) {
         // Non-interactive mode
         config = {
           name: options.name,
           engine: options.engine,
           port: options.port,
         };
-        spinner.stop();
       } else {
         // Interactive mode
-        spinner.stop();
         console.log(chalk.cyan("\n🚀 Let's set up your database!\n"));
 
         const availableTypes = getAvailableTypes();
@@ -121,10 +140,43 @@ export const initCommand = new Command('init')
       // Get the database template
       const template = getTemplate(config.engine);
       if (!template) {
-        throw new Error(`Database engine '${config.engine}' is not supported`);
+        fail(
+          'init',
+          ExitCode.Usage,
+          `Database engine '${config.engine}' is not supported`,
+          jsonMode,
+          'Run `hayai init` without flags to browse the supported engines',
+        );
       }
 
-      if (template.experimental) {
+      // Idempotency: an orchestrator retry must not explode on its own success.
+      const dockerManager = getDockerManager();
+      await dockerManager.initialize();
+      const existing = dockerManager.getInstance(config.name);
+      if (existing) {
+        if (options.existsOk && existing.engine === config.engine) {
+          if (!jsonMode) {
+            console.log(
+              chalk.gray(`ℹ️  Instance '${config.name}' (${existing.engine}) already exists — ok`),
+            );
+          }
+          succeed('init', { created: false, instance: existing }, jsonMode);
+          return;
+        }
+        const detail =
+          existing.engine === config.engine
+            ? `Instance '${config.name}' already exists`
+            : `Instance '${config.name}' already exists with a different engine (${existing.engine})`;
+        fail(
+          'init',
+          ExitCode.Conflict,
+          detail,
+          jsonMode,
+          options.existsOk ? undefined : 'Use --exists-ok for idempotent creation',
+        );
+      }
+
+      if (template.experimental && !jsonMode) {
         console.log(
           chalk.yellow(
             `\n⚠️  ${template.name} is experimental: hayai runs it as a single container, but it needs a multi-node cluster to work properly. Expect it to be partially or non-functional.`,
@@ -133,13 +185,42 @@ export const initCommand = new Command('init')
       }
 
       // Create the database instance
-      const createSpinner = ora(`Creating ${template.name} instance '${config.name}'...`).start();
+      const createSpinner = jsonMode
+        ? null
+        : ora(`Creating ${template.name} instance '${config.name}'...`).start();
 
-      const instance = await createDatabase(config.name, template, {
-        port: config.port,
-      });
+      let instance;
+      try {
+        instance = await createDatabase(config.name, template, {
+          port: config.port,
+        });
+      } catch (error) {
+        createSpinner?.fail(`Failed to create '${config.name}'`);
+        // A concurrent process may have created the same name between our
+        // check and the locked create — map that race to the same contract.
+        if (error instanceof Error && error.message.includes('already exists')) {
+          if (options.existsOk) {
+            const raced = getDockerManager().getInstance(config.name);
+            if (raced && raced.engine === config.engine) {
+              succeed('init', { created: false, instance: raced }, jsonMode);
+              return;
+            }
+          }
+          fail('init', ExitCode.Conflict, error.message, jsonMode);
+        }
+        throw error;
+      }
 
-      createSpinner.succeed(`Successfully created ${template.name} instance '${config.name}'`);
+      createSpinner?.succeed(`Successfully created ${template.name} instance '${config.name}'`);
+
+      if (jsonMode) {
+        succeed(
+          'init',
+          { created: true, instance, experimental: Boolean(template.experimental) },
+          jsonMode,
+        );
+        return;
+      }
 
       // Display success information
       console.log(chalk.green('\n✅ Database instance created successfully!\n'));
@@ -161,10 +242,6 @@ export const initCommand = new Command('init')
       console.log(`  2. Run ${chalk.cyan('hayai list')} to see all your databases`);
       console.log(`  3. Run ${chalk.cyan('hayai studio')} to open admin dashboards`);
     } catch (error) {
-      console.error(
-        chalk.red('\n❌ Failed to initialize database:'),
-        error instanceof Error ? error.message : error,
-      );
-      process.exit(1);
+      failFromError('init', error, jsonMode);
     }
   });
