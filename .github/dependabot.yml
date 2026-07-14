@@ -8,19 +8,38 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     labels: [dependencies, javascript]
+    ignore:
+      # Types track the supported Node floor (engines >=22). Majors of
+      # @types/node must only move together with a conscious floor bump —
+      # delete this rule when that decision is made.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # typescript majors are gated on the test/lint toolchain: ts-jest and
+      # typescript-eslint must publish a compatible release first. TS 7
+      # currently breaks npm ci through their peer ranges (ts-jest <7,
+      # typescript-eslint <6.1). Delete this rule once both support the
+      # next major.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
     groups:
-      # Toolchain churns often and is dev-only — batch it into one PR.
+      # Toolchain churns often and is dev-only — batch minors/patches into
+      # one PR. Majors (e.g. typescript 6 -> 7) arrive as individual PRs
+      # so breaking compiler upgrades get explicit review.
       dev-tooling:
         dependency-type: development
+        update-types: [minor, patch]
         patterns:
           - eslint*
+          - '@eslint/*'
           - '@typescript-eslint/*'
+          - typescript-eslint
           - typescript
           - prettier
           - jest
           - ts-jest
           - '@types/*'
           - tsx
+          - globals
       # Runtime deps: group low-risk updates, surface majors on their own.
       runtime-minor:
         dependency-type: production
