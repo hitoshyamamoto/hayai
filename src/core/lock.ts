@@ -77,6 +77,7 @@ export async function acquireStateLock(): Promise<() => Promise<void>> {
         throw new Error(
           `Timed out waiting for the hayai state lock (${lockPath}). ` +
             'Another hayai process may be stuck; remove the file if you are sure none is running.',
+          { cause: error },
         );
       }
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));

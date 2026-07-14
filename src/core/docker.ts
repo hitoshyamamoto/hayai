@@ -381,7 +381,7 @@ export class DockerManager {
       if (error instanceof DockerNotReadyError) {
         throw error; // keep the Environment classification for the CLI layer
       }
-      throw new Error(`Failed to start database '${name}': ${error}`);
+      throw new Error(`Failed to start database '${name}': ${error}`, { cause: error });
     }
   }
 
@@ -421,7 +421,7 @@ export class DockerManager {
       if (error instanceof DockerNotReadyError) {
         throw error; // keep the Environment classification for the CLI layer
       }
-      throw new Error(`Failed to stop database '${name}': ${error}`);
+      throw new Error(`Failed to stop database '${name}': ${error}`, { cause: error });
     }
   }
 
@@ -481,7 +481,7 @@ export class DockerManager {
       if (error instanceof DockerNotReadyError) {
         throw error;
       }
-      throw new Error(`Failed to start databases: ${error}`);
+      throw new Error(`Failed to start databases: ${error}`, { cause: error });
     }
   }
 
@@ -495,7 +495,7 @@ export class DockerManager {
       if (error instanceof DockerNotReadyError) {
         throw error;
       }
-      throw new Error(`Failed to stop databases: ${error}`);
+      throw new Error(`Failed to stop databases: ${error}`, { cause: error });
     }
   }
 

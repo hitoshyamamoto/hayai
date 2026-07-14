@@ -157,7 +157,7 @@ export class SecurityManager {
       // Set restrictive permissions
       await chmod(this.credentialsPath, 0o600);
     } catch (error) {
-      throw new Error(`Failed to store credentials securely: ${error}`);
+      throw new Error(`Failed to store credentials securely: ${error}`, { cause: error });
     }
   }
 
@@ -377,7 +377,7 @@ export class SecurityManager {
       await mkdir(path.dirname(this.securityPolicyPath), { recursive: true });
       await writeFile(this.securityPolicyPath, JSON.stringify(policy, null, 2));
     } catch (error) {
-      throw new Error(`Failed to save security policy: ${error}`);
+      throw new Error(`Failed to save security policy: ${error}`, { cause: error });
     }
   }
 
