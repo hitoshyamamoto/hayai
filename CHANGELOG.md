@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Build uses `nodenext` module resolution. The previous `node` (node10)
+  mode became a hard error under TypeScript 6 and stops functioning
+  entirely in 7; `nodenext` is the terminal fix and needed no source
+  changes — the package is already ESM and imports with explicit `.js`
+  extensions.
+- Dev toolchain moved up: TypeScript 5.9 → 6.0, `@types/node` 24 → 26,
+  ESLint 10.5 → 10.7, Prettier 3.8 → 3.9, `tsx` 4.22 → 4.23,
+  `typescript-eslint` → 8.64. TypeScript is held at 6.0 for now: 7.0 is
+  uninstallable until `ts-jest` and `typescript-eslint` ship
+  TS 7-compatible releases (their peer ranges reject it), and Dependabot
+  is configured to stop re-proposing it until then.
+- `tsconfig` no longer pulls in the `DOM` lib. hayai is a Node CLI with
+  no browser surface, and the DOM globals only let browser-only code
+  (`window`, `document`, …) type-check instead of being flagged.
+
+### Fixed
+- Errors rethrown from the Docker, lock and security layers now attach
+  the original error as `cause`, so the root failure is no longer
+  dropped from the chain the CLI reports.
+
+### Security
+- Resolved the two transitive dev-dependency advisories `npm audit`
+  flagged: `js-yaml` quadratic-complexity DoS in merge-key handling
+  (moderate) and `@babel/core` arbitrary file read via `sourceMappingURL`
+  (low). Neither reached production — `npm audit --omit=dev` was already
+  clean — so published `hayai-db` consumers were never exposed.
+
 ## [0.9.0] - 2026-07-05
 
 The trust release: every advertised data verb is now verified end-to-end
@@ -162,6 +190,7 @@ to make every command do what it claims — and say so plainly when it does not.
   client-SDK / dashboard / `.env` promises.
 - `studio` only advertises dashboards that actually exist.
 
-[Unreleased]: https://github.com/hitoshyamamoto/hayai/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/hitoshyamamoto/hayai/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/hitoshyamamoto/hayai/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/hitoshyamamoto/hayai/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/hitoshyamamoto/hayai/releases/tag/v0.7.1
