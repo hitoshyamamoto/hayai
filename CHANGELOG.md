@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-14
+
 ### Changed
 - Build uses `nodenext` module resolution. The previous `node` (node10)
   mode became a hard error under TypeScript 6 and stops functioning
@@ -190,7 +192,8 @@ to make every command do what it claims — and say so plainly when it does not.
   client-SDK / dashboard / `.env` promises.
 - `studio` only advertises dashboards that actually exist.
 
-[Unreleased]: https://github.com/hitoshyamamoto/hayai/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/hitoshyamamoto/hayai/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/hitoshyamamoto/hayai/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/hitoshyamamoto/hayai/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/hitoshyamamoto/hayai/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/hitoshyamamoto/hayai/releases/tag/v0.7.1
